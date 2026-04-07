@@ -1,0 +1,82 @@
+const styles = `
+  .mb-wrapper {
+    display: flex;
+    margin-bottom: 16px;
+  }
+  .mb-wrapper.user {
+    justify-content: flex-end;
+  }
+  .mb-wrapper.agent {
+    justify-content: flex-start;
+  }
+  .mb-bubble-group {
+    max-width: 70%;
+    display: flex;
+    flex-direction: column;
+  }
+  .mb-wrapper.user .mb-bubble-group {
+    align-items: flex-end;
+  }
+  .mb-wrapper.agent .mb-bubble-group {
+    align-items: flex-start;
+  }
+  .mb-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #0e7490;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  .mb-bubble {
+    padding: 11px 15px;
+    border-radius: 16px;
+    font-size: 14px;
+    line-height: 1.55;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+  .mb-wrapper.user .mb-bubble {
+    background: #4f46e5;
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .mb-wrapper.agent .mb-bubble {
+    background: #111827;
+    color: #e2e8f0;
+    border: 1px solid #1f2937;
+    border-bottom-left-radius: 4px;
+  }
+  .mb-timestamp {
+    font-size: 11px;
+    color: #475569;
+    margin-top: 4px;
+    padding: 0 2px;
+  }
+`
+
+function formatTime(dateStr) {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+export default function MessageBubble({ message }) {
+  const isAgent = message.is_agent || message.role === 'assistant'
+  const side = isAgent ? 'agent' : 'user'
+
+  return (
+    <>
+      <style>{styles}</style>
+      <div className={`mb-wrapper ${side}`}>
+        <div className="mb-bubble-group">
+          {isAgent && <div className="mb-label">Travel Agent</div>}
+          <div className={`mb-bubble`}>
+            {message.content}
+          </div>
+          <div className="mb-timestamp">{formatTime(message.created_at)}</div>
+        </div>
+      </div>
+    </>
+  )
+}
