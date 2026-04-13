@@ -4,23 +4,52 @@ import { supabase } from '../lib/supabase'
 const QUESTIONS = [
   {
     key: 'budget',
-    title: 'What is your budget?',
-    options: ['Under $500', '$500 to $1,500', '$1,500 to $3,000', '$3,000+'],
+    title: 'What is your budget per person?',
+    emoji: '💰',
+    options: ['Under $500', '$500–$1,500', '$1,500–$3,000', '$3,000+'],
   },
   {
     key: 'destination',
-    title: 'What kind of destination do you want?',
-    options: ['Beach', 'City', 'Nature', 'Open to anything'],
-  },
-  {
-    key: 'group_size',
-    title: 'How many people are traveling?',
-    options: ['2 to 3', '4 to 6', '7 to 10', '10+'],
+    title: 'What kind of destination are you feeling?',
+    emoji: '🌍',
+    options: ['Beach & coast', 'City & culture', 'Nature & outdoors', 'Open to anything'],
   },
   {
     key: 'trip_style',
     title: 'What kind of trip do you want?',
-    options: ['Relaxing', 'Adventure', 'Food and nightlife', 'Balanced mix'],
+    emoji: '✈️',
+    options: ['Relaxing & recharging', 'Adventure & active', 'Food & nightlife', 'Balanced mix'],
+  },
+  {
+    key: 'pace_morning',
+    title: 'What time do you wake up on vacation?',
+    emoji: '🌅',
+    options: ['Up at the crack of dawn', 'I like to sleep in', 'Wherever the day takes me'],
+  },
+  {
+    key: 'pace_evening',
+    title: 'What does your ideal vacation evening look like?',
+    emoji: '🌙',
+    options: ['Early night, fully rested', 'Out late, night owl', 'Depends on the day'],
+  },
+  {
+    key: 'downtime',
+    title: 'How much downtime do you need?',
+    emoji: '🛋️',
+    options: ['Lots — I need to decompress', 'Some — a mix of plans and chill', 'Minimal — pack it all in'],
+  },
+  {
+    key: 'accommodation',
+    title: 'Where do you like to stay?',
+    emoji: '🏨',
+    options: ['Hotel', 'Airbnb / vacation rental', 'Hostel', 'No preference'],
+  },
+  {
+    key: 'dietary',
+    title: 'Any dietary restrictions? 🍽️',
+    emoji: '🍽️',
+    multi: true,   // allow multiple selections
+    options: ['None', 'Vegetarian', 'Vegan', 'Pescatarian', 'Gluten-free', 'Halal', 'Kosher', 'Nut-free'],
   },
 ]
 
@@ -183,12 +212,49 @@ export default function Onboarding({ user, onComplete }) {
   const selectedOption = answers[currentQuestion.key]
   const progress = ((step + 1) / QUESTIONS.length) * 100
 
+  const isOptionSelected = (option) => {
+    if (currentQuestion.multi) {
+      return Array.isArray(selectedOption) && selectedOption.includes(option)
+    }
+    return selectedOption === option
+  }
+
+  const hasSelection = () => {
+    if (currentQuestion.multi) {
+      return Array.isArray(selectedOption) && selectedOption.length > 0
+    }
+    return Boolean(selectedOption)
+  }
+
   const handleSelect = (option) => {
+    if (currentQuestion.multi) {
+      setAnswers((prev) => {
+        const current = Array.isArray(prev[currentQuestion.key]) ? prev[currentQuestion.key] : []
+        if (currentQuestion.key === 'dietary') {
+          if (option === 'None') {
+            return { ...prev, [currentQuestion.key]: ['None'] }
+          }
+
+          const withoutNone = current.filter((v) => v !== 'None')
+          const next = withoutNone.includes(option)
+            ? withoutNone.filter((v) => v !== option)
+            : [...withoutNone, option]
+          return { ...prev, [currentQuestion.key]: next }
+        }
+
+        const next = current.includes(option)
+          ? current.filter((v) => v !== option)
+          : [...current, option]
+        return { ...prev, [currentQuestion.key]: next }
+      })
+      return
+    }
+
     setAnswers((prev) => ({ ...prev, [currentQuestion.key]: option }))
   }
 
   const handleNext = () => {
-    if (!selectedOption) return
+    if (!hasSelection()) return
     if (step < QUESTIONS.length - 1) {
       setStep((s) => s + 1)
     }
@@ -199,18 +265,14 @@ export default function Onboarding({ user, onComplete }) {
   }
 
   const handleFinish = async () => {
-    if (!selectedOption) return
+    if (!hasSelection()) return
     setError('')
     setLoading(true)
     try {
-      const profile = {
-        id: user.id,
-        budget: answers.budget,
-        destination: answers.destination,
-        group_size: answers.group_size,
-        trip_style: answers.trip_style || selectedOption,
+      const profile = { id: user.id }
+      for (const q of QUESTIONS) {
+        if (answers[q.key] !== undefined) profile[q.key] = answers[q.key]
       }
-      // Ensure the final step's answer is included
       profile[currentQuestion.key] = selectedOption
 
       const { error: insertError } = await supabase
@@ -241,7 +303,10 @@ export default function Onboarding({ user, onComplete }) {
             <div className="ob-step-label">
               Step {step + 1} of {QUESTIONS.length}
             </div>
-            <div className="ob-title">{currentQuestion.title}</div>
+            <div className="ob-title">
+              {currentQuestion.emoji ? `${currentQuestion.emoji} ` : ''}
+              {currentQuestion.title}
+            </div>
             <div className="ob-progress-bar-bg">
               <div
                 className="ob-progress-bar-fill"
@@ -256,7 +321,7 @@ export default function Onboarding({ user, onComplete }) {
             {currentQuestion.options.map((option) => (
               <button
                 key={option}
-                className={`ob-option${selectedOption === option ? ' selected' : ''}`}
+                className={`ob-option${isOptionSelected(option) ? ' selected' : ''}`}
                 onClick={() => handleSelect(option)}
                 disabled={loading}
               >
@@ -284,7 +349,7 @@ export default function Onboarding({ user, onComplete }) {
               <button
                 className="ob-btn ob-btn-next"
                 onClick={handleFinish}
-                disabled={!selectedOption || loading}
+                disabled={!hasSelection() || loading}
               >
                 {loading ? 'Saving...' : 'Finish'}
               </button>
@@ -292,7 +357,7 @@ export default function Onboarding({ user, onComplete }) {
               <button
                 className="ob-btn ob-btn-next"
                 onClick={handleNext}
-                disabled={!selectedOption}
+                disabled={!hasSelection()}
               >
                 Next
               </button>
