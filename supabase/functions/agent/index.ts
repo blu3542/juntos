@@ -170,6 +170,31 @@ const TOOL_DECLARATIONS = [
       required: ["destination", "days"],
     },
   },
+  {
+    name: "search_reviews",
+    description:
+      "Search real traveler reviews for restaurants, hotels, attractions, and activities in a specific city. Use this when users ask about specific places, want recommendations backed by real experiences, or ask what locals and travelers think about a destination.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description:
+            "What to search for, e.g. 'best ramen restaurants' or 'top beaches' or 'hidden gems'",
+        },
+        city: {
+          type: "string",
+          description:
+            "The city to search reviews for, lowercase (e.g. 'maui', 'tokyo', 'paris')",
+        },
+        count: {
+          type: "number",
+          description: "Number of reviews to retrieve (default 8, max 15)",
+        },
+      },
+      required: ["query", "city"],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -448,6 +473,94 @@ function createItinerary(args: {
 }
 
 // ---------------------------------------------------------------------------
+// RAG: search traveler reviews via pgvector
+// ---------------------------------------------------------------------------
+async function searchReviews(
+  args: { query: string; city: string; count?: number },
+  openaiApiKey: string | undefined,
+  supabaseUrl: string,
+  supabaseServiceKey: string
+): Promise<unknown> {
+  if (!openaiApiKey) {
+    return { error: "Review search is not available (OPENAI_API_KEY not configured)" };
+  }
+
+  const city = args.city.toLowerCase().trim();
+  const count = Math.min(args.count ?? 8, 15);
+
+  // Embed the query with OpenAI text-embedding-3-small
+  const embedRes = await fetch("https://api.openai.com/v1/embeddings", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${openaiApiKey}`,
+    },
+    body: JSON.stringify({
+      model: "text-embedding-3-small",
+      input: args.query,
+    }),
+  });
+
+  if (!embedRes.ok) {
+    const errText = await embedRes.text();
+    return { error: `Embedding API error: ${errText}` };
+  }
+
+  const embedData = await embedRes.json() as { data: Array<{ embedding: number[] }> };
+  const queryEmbedding = embedData.data[0].embedding;
+
+  // Call match_reviews RPC via Supabase REST API
+  const rpcRes = await fetch(`${supabaseUrl}/rest/v1/rpc/match_reviews`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": supabaseServiceKey,
+      "Authorization": `Bearer ${supabaseServiceKey}`,
+    },
+    body: JSON.stringify({
+      query_embedding: queryEmbedding,
+      city_filter: city,
+      match_count: count,
+    }),
+  });
+
+  if (!rpcRes.ok) {
+    const errText = await rpcRes.text();
+    return { error: `Review retrieval error: ${errText}` };
+  }
+
+  const reviews = await rpcRes.json() as Array<{
+    location_name: string;
+    source: string;
+    content: string;
+    rating: number;
+    category: string;
+    similarity: number;
+  }>;
+
+  // Filter out low-relevance results
+  const relevant = reviews.filter((r) => r.similarity >= 0.7);
+
+  if (relevant.length === 0) {
+    return {
+      message: `No relevant reviews found for "${args.query}" in ${city}. The reviews database may not have data for this city yet.`,
+      reviews: [],
+    };
+  }
+
+  const formatted = relevant
+    .map((r) => `[${r.source.toUpperCase()}] ${r.location_name} — ${r.rating}★ (${r.category})\n${r.content}`)
+    .join("\n\n");
+
+  return {
+    city,
+    query: args.query,
+    review_count: relevant.length,
+    reviews_text: `Relevant traveler reviews:\n\n${formatted}`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Gemini API call
 // ---------------------------------------------------------------------------
 async function callGemini(
@@ -491,6 +604,7 @@ Deno.serve(async (req: Request) => {
   try {
     // --- Environment variables ---
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "https://nigvyotnrlgbqeeyueql.supabase.co";
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
@@ -657,6 +771,14 @@ Always use your tools to provide specific, grounded recommendations rather than 
               break;
             case "create_itinerary":
               toolResult = createItinerary(args as Parameters<typeof createItinerary>[0]);
+              break;
+            case "search_reviews":
+              toolResult = await searchReviews(
+                args as { query: string; city: string; count?: number },
+                OPENAI_API_KEY,
+                SUPABASE_URL,
+                SUPABASE_SERVICE_ROLE_KEY
+              );
               break;
             default:
               toolResult = { error: `Unknown tool: ${name}` };
