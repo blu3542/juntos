@@ -28,6 +28,20 @@ export default function App() {
 
   const resolving = useRef(false)
 
+  const withTimeout = async (promise, ms, label) => {
+    let timeoutId
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`${label} timed out`))
+      }, ms)
+    })
+    try {
+      return await Promise.race([promise, timeoutPromise])
+    } finally {
+      clearTimeout(timeoutId)
+    }
+  }
+
   const resolveSession = async (newSession) => {
     if (resolving.current) return
     resolving.current = true
@@ -36,7 +50,6 @@ export default function App() {
       if (!newSession) {
         setAppState('auth')
         setActiveConversationId(null)
-        resolving.current = false
         return
       }
 
@@ -45,23 +58,34 @@ export default function App() {
         setAppState('chat')
       } else {
         // Fallback for users who onboarded before the metadata flag was introduced.
-        // One-time DB check; stamps the flag so future logins skip this query.
-        const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('id')
-          .eq('id', newSession.user.id)
-          .maybeSingle()
-        if (profile) {
-          await supabase.auth.updateUser({ data: { onboarding_complete: true } })
-          setAppState('chat')
-        } else {
+        // One-time DB check.
+        try {
+          const { data: profile, error: profileError } = await withTimeout(
+            supabase
+              .from('user_profiles')
+              .select('id')
+              .eq('id', newSession.user.id)
+              .maybeSingle(),
+            10000,
+            'Loading profile'
+          )
+          if (profileError) {
+            console.error('[resolveSession] profile check error:', profileError)
+            setAppState('onboarding')
+          } else if (profile) {
+            setAppState('chat')
+          } else {
+            setAppState('onboarding')
+          }
+        } catch (e) {
+          console.error('[resolveSession] profile check threw:', e)
           setAppState('onboarding')
         }
       }
-      resolving.current = false
     } catch (e) {
       console.error('[resolveSession] error:', e)
       setAppState('auth')
+    } finally {
       resolving.current = false
     }
   }

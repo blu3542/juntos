@@ -570,17 +570,25 @@ Deno.serve(async (req: Request) => {
 
     const budget = userProfile?.budget ?? "Not specified";
     const destination = userProfile?.destination ?? "Not specified";
-    const group_size = userProfile?.group_size ?? "Not specified";
     const trip_style = userProfile?.trip_style ?? "Not specified";
+    const pace_morning = userProfile?.pace_morning ?? "Not specified";
+    const pace_evening = userProfile?.pace_evening ?? "Not specified";
+    const downtime = userProfile?.downtime ?? "Not specified";
+    const accommodation = userProfile?.accommodation ?? "Not specified";
+    const dietary = userProfile?.dietary ?? "Not specified";
 
     // --- Build system instruction ---
     const systemInstruction = `You are a knowledgeable and friendly AI travel agent. Help users plan their trips by searching for flights, hotels, activities, and providing personalized recommendations.
 
-User Profile:
-- Budget: ${budget}
-- Preferred destination type: ${destination}
-- Group size: ${group_size}
+User Profile (from onboarding):
+- Budget per person: ${budget}
+- Destination vibe: ${destination}
 - Trip style: ${trip_style}
+- Morning pace: ${pace_morning}
+- Evening pace: ${pace_evening}
+- Downtime preference: ${downtime}
+- Accommodation preference: ${accommodation}
+- Dietary restrictions: ${Array.isArray(dietary) ? dietary.join(", ") : dietary}
 
 Always use your tools to provide specific, grounded recommendations rather than generic advice. When you have enough information, proactively suggest relevant options.`;
 
