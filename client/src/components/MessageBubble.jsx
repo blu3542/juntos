@@ -61,6 +61,55 @@ function formatTime(dateStr) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+function AttachmentPreview({ attachments }) {
+  if (!attachments || attachments.length === 0) return null
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '6px' }}>
+      {attachments.map((att, i) => {
+        if (att.mime_type?.startsWith('image/')) {
+          return (
+            <a key={i} href={att.url} target="_blank" rel="noopener noreferrer">
+              <img
+                src={att.url}
+                alt={att.name}
+                style={{
+                  maxWidth: '200px',
+                  maxHeight: '150px',
+                  borderRadius: '8px',
+                  border: '1px solid #1f2937',
+                  display: 'block',
+                }}
+              />
+            </a>
+          )
+        }
+        return (
+          <a
+            key={i}
+            href={att.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: '#0f172a',
+              border: '1px solid #1f2937',
+              borderRadius: '8px',
+              padding: '6px 10px',
+              fontSize: '12px',
+              color: '#94a3b8',
+              textDecoration: 'none',
+            }}
+          >
+            📄 {att.name}
+          </a>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function MessageBubble({ message }) {
   const isAgent = message.is_agent || message.role === 'assistant'
   const side = isAgent ? 'agent' : 'user'
@@ -71,7 +120,8 @@ export default function MessageBubble({ message }) {
       <div className={`mb-wrapper ${side}`}>
         <div className="mb-bubble-group">
           {isAgent && <div className="mb-label">Travel Agent</div>}
-          <div className={`mb-bubble`}>
+          <AttachmentPreview attachments={message.attachments} />
+          <div className="mb-bubble">
             {message.content}
           </div>
           <div className="mb-timestamp">{formatTime(message.created_at)}</div>

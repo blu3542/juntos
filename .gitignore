@@ -8,13 +8,16 @@
 # DS_store files
 **/.DS_Store
 
+# VS Code files
+*.vscode
+
 # pycache
 __pycache__/
 CLAUDE.MD
 HANDOFF.md
 
 # Node
-node_modules/
+**/node_modules/
 client/node_modules/
 
 # Local dev artifacts
