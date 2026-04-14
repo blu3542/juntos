@@ -171,7 +171,81 @@ const styles = `
   .cw-empty-sub {
     font-size: 13px;
   }
+  .cw-attachments-preview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0 20px 12px;
+    background: #111827;
+  }
+  .cw-attachment-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #0f172a;
+    border: 1px solid #1f2937;
+    border-radius: 999px;
+    padding: 5px 10px 5px 8px;
+    font-size: 12px;
+    color: #cbd5e1;
+    max-width: 200px;
+  }
+  .cw-attachment-chip-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cw-attachment-chip-remove {
+    border: none;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    transition: color 0.15s;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .cw-attachment-chip-remove:hover {
+    color: #f87171;
+  }
+  .cw-attach-btn {
+    background: transparent;
+    border: 1px solid #1f2937;
+    border-radius: 10px;
+    width: 42px;
+    height: 42px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: border-color 0.2s, background 0.2s;
+    color: #64748b;
+    -webkit-appearance: none;
+    appearance: none;
+    padding: 0;
+  }
+  .cw-attach-btn:hover:not(:disabled) {
+    border-color: #374151;
+    background: #1f2937;
+    color: #94a3b8;
+  }
+  .cw-attach-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
 `
+
+function fileIcon(fileType) {
+  if (fileType?.startsWith('image/')) return '🖼️'
+  if (fileType === 'application/pdf') return '📄'
+  return '📎'
+}
 
 export default function ChatWindow({ user, conversationId }) {
   const [messages, setMessages] = useState([])
