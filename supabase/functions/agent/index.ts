@@ -23,6 +23,7 @@ interface GeminiPart {
   text?: string;
   functionCall?: { name: string; args: Record<string, unknown> };
   functionResponse?: { name: string; response: unknown };
+  inlineData?: { mimeType: string; data: string };
 }
 
 interface GeminiContent {
@@ -524,13 +525,13 @@ Deno.serve(async (req: Request) => {
     const userId = user.id;
 
     // --- Parse body ---
-    let body: { conversation_id: string; user_message: string };
+    let body: { conversation_id: string; user_message: string; attachments?: Array<{ name: string; url: string; mime_type: string; size: number; path: string }> };
     try {
       body = await req.json();
     } catch {
       return corsResponse(JSON.stringify({ error: "Invalid JSON body" }), 400);
     }
-    const { conversation_id, user_message } = body;
+    const { conversation_id, user_message, attachments = [] } = body;
     if (!conversation_id || !user_message) {
       return corsResponse(
         JSON.stringify({ error: "conversation_id and user_message are required" }),
@@ -546,6 +547,7 @@ Deno.serve(async (req: Request) => {
         role: "user",
         content: user_message,
         is_agent: false,
+        attachments: attachments.length > 0 ? attachments : null,
       });
     if (insertUserMsgError) {
       console.error("Failed to save user message:", insertUserMsgError);
@@ -593,10 +595,57 @@ User Profile (from onboarding):
 Always use your tools to provide specific, grounded recommendations rather than generic advice. When you have enough information, proactively suggest relevant options.`;
 
     // --- Map history to Gemini contents ---
-    const contents: GeminiContent[] = (messageHistory ?? []).map((msg: { role: string; content: string }) => ({
-      role: msg.role === "user" ? "user" : "model",
-      parts: [{ text: msg.content }],
-    }));
+    const historyList = messageHistory ?? [];
+    const contents: GeminiContent[] = await Promise.all(
+      historyList.map(async (msg: { role: string; content: string; attachments?: Array<{ name: string; url: string; mime_type: string }> }, index: number) => {
+        const isLastUserMsg = index === historyList.length - 1 && msg.role === "user";
+        const textPart: GeminiPart = { text: msg.content };
+
+        if (!isLastUserMsg || attachments.length === 0) {
+          return {
+            role: msg.role === "user" ? "user" : "model",
+            parts: [textPart],
+          } as GeminiContent;
+        }
+
+        // Build multimodal parts for the current user message
+        const parts: GeminiPart[] = [textPart];
+
+        for (const att of attachments) {
+          const supportedMimeTypes = [
+            "image/jpeg", "image/png", "image/gif", "image/webp",
+            "application/pdf",
+          ];
+
+          if (!supportedMimeTypes.includes(att.mime_type)) {
+            // For unsupported types, just append a text description
+            parts.push({ text: `[Attached file: ${att.name} (${att.mime_type}) — ${att.url}]` });
+            continue;
+          }
+
+          try {
+            const fileResp = await fetch(att.url);
+            if (!fileResp.ok) throw new Error(`Failed to fetch attachment: ${att.url}`);
+            const buffer = await fileResp.arrayBuffer();
+            const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+            parts.push({
+              inlineData: {
+                mimeType: att.mime_type,
+                data: base64,
+              },
+            });
+          } catch (fetchErr) {
+            console.error(`Could not fetch attachment ${att.name}:`, fetchErr);
+            parts.push({ text: `[Attached file: ${att.name} — could not be loaded]` });
+          }
+        }
+
+        return {
+          role: "user",
+          parts,
+        } as GeminiContent;
+      })
+    );
 
     // --- Agentic loop (max 5 iterations) ---
     const MAX_ITERATIONS = 5;

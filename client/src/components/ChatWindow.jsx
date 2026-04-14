@@ -166,7 +166,81 @@ const styles = `
   .cw-empty-sub {
     font-size: 13px;
   }
+  .cw-attachments-preview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0 20px 12px;
+    background: #111827;
+  }
+  .cw-attachment-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #0f172a;
+    border: 1px solid #1f2937;
+    border-radius: 999px;
+    padding: 5px 10px 5px 8px;
+    font-size: 12px;
+    color: #cbd5e1;
+    max-width: 200px;
+  }
+  .cw-attachment-chip-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cw-attachment-chip-remove {
+    border: none;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    transition: color 0.15s;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .cw-attachment-chip-remove:hover {
+    color: #f87171;
+  }
+  .cw-attach-btn {
+    background: transparent;
+    border: 1px solid #1f2937;
+    border-radius: 10px;
+    width: 42px;
+    height: 42px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: border-color 0.2s, background 0.2s;
+    color: #64748b;
+    -webkit-appearance: none;
+    appearance: none;
+    padding: 0;
+  }
+  .cw-attach-btn:hover:not(:disabled) {
+    border-color: #374151;
+    background: #1f2937;
+    color: #94a3b8;
+  }
+  .cw-attach-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
 `
+
+function fileIcon(fileType) {
+  if (fileType?.startsWith('image/')) return '🖼️'
+  if (fileType === 'application/pdf') return '📄'
+  return '📎'
+}
 
 export default function ChatWindow({ user, session, conversationId }) {
   const [messages, setMessages] = useState([])
@@ -174,9 +248,12 @@ export default function ChatWindow({ user, session, conversationId }) {
   const [isThinking, setIsThinking] = useState(false)
   const [sendError, setSendError] = useState('')
   const [loadingMessages, setLoadingMessages] = useState(true)
+  const [pendingFiles, setPendingFiles] = useState([])
+  const [uploadError, setUploadError] = useState('')
   const bottomRef = useRef(null)
   const channelRef = useRef(null)
   const textareaRef = useRef(null)
+  const fileInputRef = useRef(null)
 
   // Fetch messages whenever conversation changes
   useEffect(() => {
@@ -184,6 +261,8 @@ export default function ChatWindow({ user, session, conversationId }) {
     setMessages([])
     setIsThinking(false)
     setSendError('')
+    setUploadError('')
+    setPendingFiles([])
     setLoadingMessages(true)
     fetchMessages()
   }, [conversationId])
@@ -253,11 +332,55 @@ export default function ChatWindow({ user, session, conversationId }) {
     }
   }
 
+  // Attachment uploads
+  const handleAttachClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = (e) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length > 0) {
+      setPendingFiles((prev) => [...prev, ...files])
+      setUploadError('')
+    }
+    e.target.value = ''
+  }
+
+  const removePendingFile = (indexToRemove) => {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== indexToRemove))
+  }
+
+  const uploadFilesToStorage = async () => {
+    const attachments = []
+    for (const file of pendingFiles) {
+      const safeName = `${crypto.randomUUID()}-${file.name}`
+      const { data, error } = await supabase.storage
+        .from('chat-attachments')
+        .upload(safeName, file, {
+          contentType: file.type || 'application/octet-stream',
+          upsert: false,
+        })
+      if (error) throw new Error(`Upload failed for ${file.name}: ${error.message}`)
+      const { data: publicData } = supabase.storage
+        .from('chat-attachments')
+        .getPublicUrl(data.path)
+      attachments.push({
+        name: file.name,
+        path: data.path,
+        url: publicData.publicUrl,
+        mime_type: file.type || 'application/octet-stream',
+        size: file.size,
+      })
+    }
+    return attachments
+  }
+
   const handleSend = async () => {
     const text = inputText.trim()
     if (!text || isThinking) return
 
     setSendError('')
+    setUploadError('')
     setInputText('')
     setIsThinking(true)
 
@@ -267,6 +390,12 @@ export default function ChatWindow({ user, session, conversationId }) {
     }
 
     try {
+      let attachments = []
+      if (pendingFiles.length > 0) {
+        attachments = await uploadFilesToStorage()
+        setPendingFiles([])
+      }
+
       const response = await fetch(AGENT_FUNCTION_URL, {
         method: 'POST',
         headers: {
@@ -276,6 +405,7 @@ export default function ChatWindow({ user, session, conversationId }) {
         body: JSON.stringify({
           conversation_id: conversationId,
           user_message: text,
+          attachments
         }),
       })
 
@@ -352,11 +482,50 @@ export default function ChatWindow({ user, session, conversationId }) {
           <div ref={bottomRef} />
         </div>
 
-        {sendError && (
-          <div className="cw-error">{sendError}</div>
+        {(uploadError || sendError) && (
+          <div className="cw-error">{uploadError || sendError}</div>
+        )}
+
+        {/* Attachment chip*/}
+        {pendingFiles.length > 0 && (
+          <div className="cw-attachments-preview">
+            {pendingFiles.map((file, i) => (
+              <div key={i} className="cw-attachment-chip">
+                <span>{fileIcon(file.type)}</span>
+                <span className="cw-attachment-chip-name">{file.name}</span>
+                <button
+                  className="cw-attachment-chip-remove"
+                  onClick={() => removePendingFile(i)}
+                  aria-label="Remove attachment"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
         )}
 
         <div className="cw-composer">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,application/pdf,.doc,.docx,.txt,.csv"
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+          />
+
+          <button
+            className="cw-attach-btn"
+            onClick={handleAttachClick}
+            disabled={isThinking}
+            aria-label="Attach file"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            </svg>
+          </button>
+
           <textarea
             ref={textareaRef}
             className="cw-input"
