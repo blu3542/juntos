@@ -26,3 +26,5 @@ supabase/.temp/
 
 # Root lockfile (client lockfile should live under client/)
 /package-lock.json
+*.md
+.env

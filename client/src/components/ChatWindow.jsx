@@ -5,6 +5,11 @@ import MessageBubble from './MessageBubble'
 const AGENT_FUNCTION_URL =
   'https://nigvyotnrlgbqeeyueql.supabase.co/functions/v1/agent'
 
+// Anon key used as the gateway-facing Bearer token (HS256, always accepted).
+// The user's actual JWT is passed in the request body and validated server-side.
+const SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5pZ3Z5b3RucmxnYnFlZXl1ZXFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1Mjc1MDUsImV4cCI6MjA5MTEwMzUwNX0.d4BeEIwilSpG5etMUQyr-PnusnI5bCm6tcPwVwaagj4'
+
 const styles = `
   .cw-container {
     display: flex;
@@ -242,7 +247,7 @@ function fileIcon(fileType) {
   return '📎'
 }
 
-export default function ChatWindow({ user, session, conversationId }) {
+export default function ChatWindow({ user, conversationId }) {
   const [messages, setMessages] = useState([])
   const [inputText, setInputText] = useState('')
   const [isThinking, setIsThinking] = useState(false)
@@ -390,22 +395,34 @@ export default function ChatWindow({ user, session, conversationId }) {
     }
 
     try {
+      const { data: { session: freshSession } } = await supabase.auth.getSession()
+      const token = freshSession?.access_token
+      if (!token) throw new Error('Not authenticated')
+
+      // Upload any pending files first
       let attachments = []
       if (pendingFiles.length > 0) {
-        attachments = await uploadFilesToStorage()
-        setPendingFiles([])
+        try {
+          attachments = await uploadFilesToStorage()
+          setPendingFiles([])
+        } catch (uploadErr) {
+          setUploadError(uploadErr.message || 'File upload failed.')
+          setIsThinking(false)
+          return
+        }
       }
 
       const response = await fetch(AGENT_FUNCTION_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({
           conversation_id: conversationId,
           user_message: text,
-          attachments
+          access_token: token,
+          attachments,
         }),
       })
 
