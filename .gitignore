@@ -12,5 +12,16 @@
 __pycache__/
 CLAUDE.MD
 HANDOFF.md
+
+# Node
+node_modules/
+client/node_modules/
+
+# Local dev artifacts
+backend/dev.db
+supabase/.temp/
+
+# Root lockfile (client lockfile should live under client/)
+/package-lock.json
 *.md
 .env
