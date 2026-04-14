@@ -325,6 +325,19 @@ export default function ChatWindow({ user, conversationId }) {
       const token = freshSession?.access_token
       if (!token) throw new Error('Not authenticated')
 
+      // Upload any pending files first
+      let attachments = []
+      if (pendingFiles.length > 0) {
+        try {
+          attachments = await uploadFilesToStorage()
+          setPendingFiles([])
+        } catch (uploadErr) {
+          setUploadError(uploadErr.message || 'File upload failed.')
+          setIsThinking(false)
+          return
+        }
+      }
+
       const response = await fetch(AGENT_FUNCTION_URL, {
         method: 'POST',
         headers: {
@@ -335,6 +348,7 @@ export default function ChatWindow({ user, conversationId }) {
           conversation_id: conversationId,
           user_message: text,
           access_token: token,
+          attachments,
         }),
       })
 

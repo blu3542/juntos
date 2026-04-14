@@ -277,13 +277,18 @@ Deno.serve(async (req: Request) => {
     const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // --- Parse body ---
-    let body: { conversation_id: string; user_message: string; access_token: string };
+    let body: {
+      conversation_id: string;
+      user_message: string;
+      access_token: string;
+      attachments?: Array<{ name: string; url: string; mime_type: string }>;
+    };
     try {
       body = await req.json();
     } catch {
       return corsResponse(JSON.stringify({ error: "Invalid JSON body" }), 400);
     }
-    const { conversation_id, user_message, access_token } = body;
+    const { conversation_id, user_message, access_token, attachments = [] } = body;
     if (!conversation_id || !user_message) {
       return corsResponse(
         JSON.stringify({ error: "conversation_id and user_message are required" }),
@@ -312,7 +317,7 @@ Deno.serve(async (req: Request) => {
         role: "user",
         content: user_message,
         is_agent: false,
-        attachments: attachments.length > 0 ? attachments : null,
+        attachments: attachments,
       });
     if (insertUserMsgError) {
       console.error("Failed to save user message:", insertUserMsgError);
