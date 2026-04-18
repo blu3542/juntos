@@ -6,7 +6,8 @@ const styles = `
   .mb-wrapper.user {
     justify-content: flex-end;
   }
-  .mb-wrapper.agent {
+  .mb-wrapper.agent,
+  .mb-wrapper.other {
     justify-content: flex-start;
   }
   .mb-bubble-group {
@@ -17,17 +18,19 @@ const styles = `
   .mb-wrapper.user .mb-bubble-group {
     align-items: flex-end;
   }
-  .mb-wrapper.agent .mb-bubble-group {
+  .mb-wrapper.agent .mb-bubble-group,
+  .mb-wrapper.other .mb-bubble-group {
     align-items: flex-start;
   }
   .mb-label {
     font-size: 11px;
     font-weight: 600;
-    color: #0e7490;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 4px;
   }
+  .mb-label.agent { color: #0e7490; }
+  .mb-label.other { color: #94a3b8; }
   .mb-bubble {
     padding: 11px 15px;
     border-radius: 16px;
@@ -41,7 +44,8 @@ const styles = `
     color: #fff;
     border-bottom-right-radius: 4px;
   }
-  .mb-wrapper.agent .mb-bubble {
+  .mb-wrapper.agent .mb-bubble,
+  .mb-wrapper.other .mb-bubble {
     background: #111827;
     color: #e2e8f0;
     border: 1px solid #1f2937;
@@ -72,13 +76,7 @@ function AttachmentPreview({ attachments }) {
               <img
                 src={att.url}
                 alt={att.name}
-                style={{
-                  maxWidth: '200px',
-                  maxHeight: '150px',
-                  borderRadius: '8px',
-                  border: '1px solid #1f2937',
-                  display: 'block',
-                }}
+                style={{ maxWidth: '200px', maxHeight: '150px', borderRadius: '8px', border: '1px solid #1f2937', display: 'block' }}
               />
             </a>
           )
@@ -89,18 +87,7 @@ function AttachmentPreview({ attachments }) {
             href={att.url}
             target="_blank"
             rel="noopener noreferrer"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: '#0f172a',
-              border: '1px solid #1f2937',
-              borderRadius: '8px',
-              padding: '6px 10px',
-              fontSize: '12px',
-              color: '#94a3b8',
-              textDecoration: 'none',
-            }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#0f172a', border: '1px solid #1f2937', borderRadius: '8px', padding: '6px 10px', fontSize: '12px', color: '#94a3b8', textDecoration: 'none' }}
           >
             📄 {att.name}
           </a>
@@ -110,20 +97,37 @@ function AttachmentPreview({ attachments }) {
   )
 }
 
-export default function MessageBubble({ message }) {
+export default function MessageBubble({ message, isGroup, currentUserId }) {
   const isAgent = message.is_agent || message.role === 'assistant'
-  const side = isAgent ? 'agent' : 'user'
+  const isOwn = !isAgent && message.sender_id === currentUserId
+
+  // In group chats: other members' messages sit on the left like agent messages.
+  // In 1:1 chats (or own messages): use the original user/agent sides.
+  let side
+  if (isAgent) {
+    side = 'agent'
+  } else if (isGroup && !isOwn) {
+    side = 'other'
+  } else {
+    side = 'user'
+  }
+
+  // Label: show "Travel Agent" for agent, sender name for other group members, nothing for own messages
+  let label = null
+  if (isAgent) {
+    label = { text: 'Travel Agent', cls: 'agent' }
+  } else if (isGroup && !isOwn && message.sender_display_name) {
+    label = { text: message.sender_display_name, cls: 'other' }
+  }
 
   return (
     <>
       <style>{styles}</style>
       <div className={`mb-wrapper ${side}`}>
         <div className="mb-bubble-group">
-          {isAgent && <div className="mb-label">Travel Agent</div>}
+          {label && <div className={`mb-label ${label.cls}`}>{label.text}</div>}
           <AttachmentPreview attachments={message.attachments} />
-          <div className="mb-bubble">
-            {message.content}
-          </div>
+          <div className="mb-bubble">{message.content}</div>
           <div className="mb-timestamp">{formatTime(message.created_at)}</div>
         </div>
       </div>

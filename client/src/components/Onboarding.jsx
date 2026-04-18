@@ -3,6 +3,13 @@ import { supabase } from '../lib/supabase'
 
 const QUESTIONS = [
   {
+    key: 'display_name',
+    title: 'What should we call you in group chats?',
+    emoji: '👤',
+    type: 'text',
+    placeholder: 'e.g. Alex, TravelBuddy, or your name',
+  },
+  {
     key: 'budget',
     title: 'What is your budget per person?',
     emoji: '💰',
@@ -200,6 +207,25 @@ const styles = `
     font-size: 13px;
     margin-bottom: 16px;
   }
+  .ob-text-input {
+    width: 100%;
+    background: #0f172a;
+    border: 1px solid #1f2937;
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-size: 15px;
+    color: #e2e8f0;
+    outline: none;
+    transition: border-color 0.15s;
+    margin-bottom: 32px;
+    font-family: inherit;
+  }
+  .ob-text-input:focus {
+    border-color: #4f46e5;
+  }
+  .ob-text-input::placeholder {
+    color: #475569;
+  }
 `
 
 export default function Onboarding({ user, onComplete }) {
@@ -220,6 +246,9 @@ export default function Onboarding({ user, onComplete }) {
   }
 
   const hasSelection = () => {
+    if (currentQuestion.type === 'text') {
+      return typeof selectedOption === 'string' && selectedOption.trim().length > 0
+    }
     if (currentQuestion.multi) {
       return Array.isArray(selectedOption) && selectedOption.length > 0
     }
@@ -317,21 +346,34 @@ export default function Onboarding({ user, onComplete }) {
 
           {error && <div className="ob-error">{error}</div>}
 
-          <div className="ob-options">
-            {currentQuestion.options.map((option) => (
-              <button
-                key={option}
-                className={`ob-option${isOptionSelected(option) ? ' selected' : ''}`}
-                onClick={() => handleSelect(option)}
-                disabled={loading}
-              >
-                <span className="ob-option-dot">
-                  <span className="ob-option-dot-inner" />
-                </span>
-                {option}
-              </button>
-            ))}
-          </div>
+          {currentQuestion.type === 'text' ? (
+            <input
+              className="ob-text-input"
+              type="text"
+              placeholder={currentQuestion.placeholder ?? ''}
+              value={answers[currentQuestion.key] ?? ''}
+              onChange={(e) => setAnswers((prev) => ({ ...prev, [currentQuestion.key]: e.target.value }))}
+              onKeyDown={(e) => { if (e.key === 'Enter' && hasSelection()) isLastStep ? handleFinish() : handleNext() }}
+              disabled={loading}
+              autoFocus
+            />
+          ) : (
+            <div className="ob-options">
+              {currentQuestion.options.map((option) => (
+                <button
+                  key={option}
+                  className={`ob-option${isOptionSelected(option) ? ' selected' : ''}`}
+                  onClick={() => handleSelect(option)}
+                  disabled={loading}
+                >
+                  <span className="ob-option-dot">
+                    <span className="ob-option-dot-inner" />
+                  </span>
+                  {option}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="ob-footer">
             {step > 0 ? (

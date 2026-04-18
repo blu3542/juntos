@@ -24,7 +24,7 @@ const globalStyles = `
 export default function App() {
   const [appState, setAppState] = useState('loading')
   const [session, setSession] = useState(null)
-  const [activeConversationId, setActiveConversationId] = useState(null)
+  const [activeConversation, setActiveConversation] = useState(null) // { id, isGroup }
 
   const resolving = useRef(false)
 
@@ -49,7 +49,7 @@ export default function App() {
       setSession(newSession)
       if (!newSession) {
         setAppState('auth')
-        setActiveConversationId(null)
+        setActiveConversation(null)
         return
       }
 
@@ -116,12 +116,12 @@ export default function App() {
     setAppState('chat')
   }
 
-  const handleSelectConversation = (id) => {
-    setActiveConversationId(id)
+  const handleSelectConversation = (id, isGroup = false) => {
+    setActiveConversation({ id, isGroup })
   }
 
-  const handleNewConversation = (id) => {
-    setActiveConversationId(id)
+  const handleNewConversation = (id, isGroup = false) => {
+    setActiveConversation({ id, isGroup })
   }
 
   if (appState === 'loading') {
@@ -171,16 +171,17 @@ export default function App() {
       <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
         <ConversationList
           user={session.user}
-          activeConversationId={activeConversationId}
+          activeConversationId={activeConversation?.id}
           onSelect={handleSelectConversation}
           onNew={handleNewConversation}
         />
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          {activeConversationId ? (
+          {activeConversation ? (
             <ChatWindow
               user={session.user}
               session={session}
-              conversationId={activeConversationId}
+              conversationId={activeConversation.id}
+              isGroup={activeConversation.isGroup ?? false}
             />
           ) : (
             <div style={{

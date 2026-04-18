@@ -282,13 +282,15 @@ Deno.serve(async (req: Request) => {
       user_message: string;
       access_token: string;
       attachments?: Array<{ name: string; url: string; mime_type: string }>;
+      is_group?: boolean;
+      sender_display_name?: string;
     };
     try {
       body = await req.json();
     } catch {
       return corsResponse(JSON.stringify({ error: "Invalid JSON body" }), 400);
     }
-    const { conversation_id, user_message, access_token, attachments = [] } = body;
+    const { conversation_id, user_message, access_token, attachments = [], is_group = false, sender_display_name } = body;
     if (!conversation_id || !user_message) {
       return corsResponse(
         JSON.stringify({ error: "conversation_id and user_message are required" }),
@@ -309,18 +311,38 @@ Deno.serve(async (req: Request) => {
     }
     const userId = user.id;
 
+    // --- Group membership gate ---
+    // For group chats, verify the calling user is actually a member of the conversation.
+    if (is_group) {
+      const { data: membership } = await serviceClient
+        .from("group_members")
+        .select("user_id")
+        .eq("conversation_id", conversation_id)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (!membership) {
+        return corsResponse(JSON.stringify({ error: "Not a member of this group" }), 403);
+      }
+    }
+
+    // Strip @travel-agent prefix before sending to Gemini
+    const cleanedMessage = user_message.replace(/^@travel-agent\s*/i, "").trim();
+
     // --- Save user message ---
-    const { error: insertUserMsgError } = await serviceClient
-      .from("messages")
-      .insert({
-        conversation_id,
-        role: "user",
-        content: user_message,
-        is_agent: false,
-        attachments: attachments,
-      });
-    if (insertUserMsgError) {
-      console.error("Failed to save user message:", insertUserMsgError);
+    // For group chats the frontend writes the user message directly, so skip here to avoid duplicates.
+    if (!is_group) {
+      const { error: insertUserMsgError } = await serviceClient
+        .from("messages")
+        .insert({
+          conversation_id,
+          role: "user",
+          content: user_message,
+          is_agent: false,
+          attachments: attachments,
+        });
+      if (insertUserMsgError) {
+        console.error("Failed to save user message:", insertUserMsgError);
+      }
     }
 
     // --- Load conversation history ---
@@ -333,43 +355,81 @@ Deno.serve(async (req: Request) => {
       return corsResponse(JSON.stringify({ error: "Failed to load conversation history" }), 500);
     }
 
-    // --- Load user profile ---
-    const { data: userProfile } = await serviceClient
-      .from("user_profiles")
-      .select("*")
-      .eq("id", userId)
-      .single();
+    // --- Load user profile(s) ---
+    function formatProfile(p: Record<string, unknown> | null): string {
+      if (!p) return "  (preferences not set)";
+      const dietary = Array.isArray(p.dietary) ? (p.dietary as string[]).join(", ") : (p.dietary as string ?? "Not specified");
+      return [
+        `  - Budget per person: ${p.budget ?? "Not specified"}`,
+        `  - Destination vibe: ${p.destination ?? "Not specified"}`,
+        `  - Trip style: ${p.trip_style ?? "Not specified"}`,
+        `  - Morning pace: ${p.pace_morning ?? "Not specified"}`,
+        `  - Evening pace: ${p.pace_evening ?? "Not specified"}`,
+        `  - Downtime preference: ${p.downtime ?? "Not specified"}`,
+        `  - Accommodation preference: ${p.accommodation ?? "Not specified"}`,
+        `  - Dietary restrictions: ${dietary}`,
+      ].join("\n");
+    }
 
-    const budget = userProfile?.budget ?? "Not specified";
-    const destination = userProfile?.destination ?? "Not specified";
-    const trip_style = userProfile?.trip_style ?? "Not specified";
-    const pace_morning = userProfile?.pace_morning ?? "Not specified";
-    const pace_evening = userProfile?.pace_evening ?? "Not specified";
-    const downtime = userProfile?.downtime ?? "Not specified";
-    const accommodation = userProfile?.accommodation ?? "Not specified";
-    const dietary = userProfile?.dietary ?? "Not specified";
+    let profileBlock: string;
+
+    if (is_group) {
+      // Fetch all group members then batch-load their profiles
+      const { data: memberRows } = await serviceClient
+        .from("group_members")
+        .select("user_id")
+        .eq("conversation_id", conversation_id);
+
+      const memberIds: string[] = (memberRows ?? []).map((r: { user_id: string }) => r.user_id);
+
+      const { data: allProfiles } = await serviceClient
+        .from("user_profiles")
+        .select("*")
+        .in("id", memberIds);
+
+      const profileMap = new Map(
+        (allProfiles ?? []).map((p: Record<string, unknown>) => [p.id as string, p])
+      );
+
+      const memberBlocks = memberIds.map((uid) => {
+        const profile = profileMap.get(uid) ?? null;
+        const name = (profile?.display_name as string | null)
+          ?? (uid === userId ? (sender_display_name ?? "Unknown") : "Unknown");
+        const isInvoker = uid === userId;
+        return `${name}${isInvoker ? " (invoked @travel-agent)" : ""}:\n${formatProfile(profile)}`;
+      });
+
+      profileBlock = `Group members' travel preferences:\n\n${memberBlocks.join("\n\n")}`;
+    } else {
+      const { data: userProfile } = await serviceClient
+        .from("user_profiles")
+        .select("*")
+        .eq("id", userId)
+        .single();
+      profileBlock = `User Profile (from onboarding):\n${formatProfile(userProfile)}`;
+    }
 
     // --- Build system instruction ---
-    const systemInstruction = `You are a knowledgeable and friendly AI travel agent. Help users plan their trips by searching for flights, hotels, activities, and providing personalized recommendations.
+    const ragInstruction = `\nYou have access to a real traveler reviews database currently loaded with reviews for Maui. Whenever a user asks about places, restaurants, hotels, beaches, or activities — especially in Maui — always call search_reviews to ground your recommendations in real traveler experiences. Use create_itinerary to build a structured day-by-day plan when the user is ready to finalize their trip.`;
 
-User Profile (from onboarding):
-- Budget per person: ${budget}
-- Destination vibe: ${destination}
-- Trip style: ${trip_style}
-- Morning pace: ${pace_morning}
-- Evening pace: ${pace_evening}
-- Downtime preference: ${downtime}
-- Accommodation preference: ${accommodation}
-- Dietary restrictions: ${Array.isArray(dietary) ? dietary.join(", ") : dietary}
+    const systemInstruction = is_group
+      ? `You are a knowledgeable and friendly AI travel agent participating in a group travel planning chat. You were invoked by ${sender_display_name ?? "a group member"} using @travel-agent. Your goal is to plan a trip that works for everyone in the group — look for destinations, budgets, and activities that satisfy the whole group, and flag any conflicts (e.g. dietary restrictions, budget gaps) proactively.
 
-You have access to a real traveler reviews database currently loaded with reviews for Maui. Whenever a user asks about places, restaurants, hotels, beaches, or activities — especially in Maui — always call search_reviews to ground your recommendations in real traveler experiences. Use create_itinerary to build a structured day-by-day plan when the user is ready to finalize their trip.`;
+${profileBlock}
+${ragInstruction}`
+      : `You are a knowledgeable and friendly AI travel agent. Help users plan their trips by searching for flights, hotels, activities, and providing personalized recommendations.
+
+${profileBlock}
+${ragInstruction}`;
 
     // --- Map history to Gemini contents ---
     const historyList = messageHistory ?? [];
     const contents: GeminiContent[] = await Promise.all(
       historyList.map(async (msg: { role: string; content: string; attachments?: Array<{ name: string; url: string; mime_type: string }> }, index: number) => {
         const isLastUserMsg = index === historyList.length - 1 && msg.role === "user";
-        const textPart: GeminiPart = { text: msg.content };
+        // Use the @travel-agent-stripped message for the final user turn sent to Gemini
+        const msgContent = isLastUserMsg ? cleanedMessage : msg.content;
+        const textPart: GeminiPart = { text: msgContent };
 
         if (!isLastUserMsg || attachments.length === 0) {
           return {
@@ -500,6 +560,7 @@ You have access to a real traveler reviews database currently loaded with review
           role: "assistant",
           content: finalAssistantText,
           is_agent: true,
+          sender_display_name: "Travel Agent",
         });
       if (insertAssistantError) {
         console.error("Failed to save assistant message:", insertAssistantError);
