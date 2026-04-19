@@ -37,6 +37,17 @@ const styles = `
     font-size: 14px;
     line-height: 1.55;
     word-break: break-word;
+  }
+  .mb-bubble p { margin: 0 0 10px 0; }
+  .mb-bubble p:last-child { margin-bottom: 0; }
+  .mb-bubble ul, .mb-bubble ol {
+    margin: 4px 0 10px 0;
+    padding-left: 16px;
+  }
+  .mb-bubble ul:last-child, .mb-bubble ol:last-child { margin-bottom: 0; }
+  .mb-bubble li { margin-bottom: 6px; line-height: 1.5; }
+  .mb-bubble li:last-child { margin-bottom: 0; }
+  .mb-wrapper.user .mb-bubble {
     white-space: pre-wrap;
   }
   .mb-wrapper.user .mb-bubble {
@@ -58,6 +69,8 @@ const styles = `
     padding: 0 2px;
   }
 `
+
+import ReactMarkdown from 'react-markdown'
 
 function formatTime(dateStr) {
   if (!dateStr) return ''
@@ -127,7 +140,13 @@ export default function MessageBubble({ message, isGroup, currentUserId }) {
         <div className="mb-bubble-group">
           {label && <div className={`mb-label ${label.cls}`}>{label.text}</div>}
           <AttachmentPreview attachments={message.attachments} />
-          <div className="mb-bubble">{message.content}</div>
+          <div className="mb-bubble">
+            {isAgent ? (
+              <ReactMarkdown>{message.content}</ReactMarkdown>
+            ) : (
+              message.content
+            )}
+          </div>
           <div className="mb-timestamp">{formatTime(message.created_at)}</div>
         </div>
       </div>
