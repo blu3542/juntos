@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, supabaseAnonKey } from '../lib/supabase'
 import MessageBubble from './MessageBubble'
 
 const AGENT_FUNCTION_URL =
   'https://nigvyotnrlgbqeeyueql.supabase.co/functions/v1/agent'
-
-const SUPABASE_ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5pZ3Z5b3RucmxnYnFlZXl1ZXFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1Mjc1MDUsImV4cCI6MjA5MTEwMzUwNX0.d4BeEIwilSpG5etMUQyr-PnusnI5bCm6tcPwVwaagj4'
 
 // Palette for member avatar initials
 const AVATAR_COLORS = [
@@ -529,18 +526,35 @@ export default function ChatWindow({ user, conversationId, isGroup }) {
 
   const handleSoloSend = async (text) => {
     setIsThinking(true)
+
     try {
       const { data: { session: s } } = await supabase.auth.getSession()
       if (!s?.access_token) throw new Error('Not authenticated')
+
       let attachments = []
       if (pendingFiles.length > 0) {
-        try { attachments = await uploadFilesToStorage(); setPendingFiles([]) }
-        catch (e) { setUploadError(e.message || 'File upload failed.'); setIsThinking(false); return }
+        try {
+          attachments = await uploadFilesToStorage()
+          setPendingFiles([])
+        } catch (e) {
+          setUploadError(e.message || 'File upload failed.')
+          setIsThinking(false)
+          return
+        }
       }
+
       const res = await fetch(AGENT_FUNCTION_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ conversation_id: conversationId, user_message: text, access_token: s.access_token, attachments }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${supabaseAnonKey}`,
+        },
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          user_message: text,
+          access_token: s.access_token,
+          attachments,
+        }),
       })
       if (!res.ok) throw new Error((await res.text()) || `Status ${res.status}`)
     } catch (err) {
@@ -564,7 +578,7 @@ export default function ChatWindow({ user, conversationId, isGroup }) {
         if (!s?.access_token) throw new Error('Not authenticated')
         const res = await fetch(AGENT_FUNCTION_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supabaseAnonKey}` },
           body: JSON.stringify({ conversation_id: conversationId, user_message: text, access_token: s.access_token, is_group: true, sender_display_name: displayName }),
         })
         if (!res.ok) throw new Error((await res.text()) || `Status ${res.status}`)

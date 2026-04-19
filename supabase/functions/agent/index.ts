@@ -272,10 +272,6 @@ Deno.serve(async (req: Request) => {
       return corsResponse(JSON.stringify({ error: "SUPABASE_SERVICE_ROLE_KEY not set" }), 500);
     }
 
-    // --- Supabase clients ---
-    // Service role client for all DB ops and auth verification
-    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
     // --- Parse body ---
     let body: {
       conversation_id: string;
@@ -291,6 +287,10 @@ Deno.serve(async (req: Request) => {
       return corsResponse(JSON.stringify({ error: "Invalid JSON body" }), 400);
     }
     const { conversation_id, user_message, access_token, attachments = [], is_group = false, sender_display_name } = body;
+
+    // --- Supabase clients ---
+    // Service role client for all DB ops and auth verification
+    const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     if (!conversation_id || !user_message) {
       return corsResponse(
         JSON.stringify({ error: "conversation_id and user_message are required" }),
