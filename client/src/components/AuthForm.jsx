@@ -4,70 +4,66 @@ import { supabase } from '../lib/supabase'
 const styles = `
   .auth-container {
     min-height: 100vh;
-    background: #0f172a;
+    background: #F3EFE8;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
+    font-family: 'Cabin', sans-serif;
   }
   .auth-card {
-    background: #111827;
-    border: 1px solid #1f2937;
+    background: #FFFCF6;
+    border: 1px solid #B9B9B9;
     border-radius: 16px;
     padding: 40px;
     width: 100%;
     max-width: 420px;
-    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.08);
   }
   .auth-logo {
     text-align: center;
     margin-bottom: 28px;
   }
-  .auth-logo-icon {
-    font-size: 40px;
-    margin-bottom: 10px;
-  }
+  .auth-logo-icon { font-size: 40px; margin-bottom: 10px; }
   .auth-logo-title {
     font-size: 24px;
     font-weight: 700;
-    color: #e2e8f0;
+    color: #106C54;
     letter-spacing: -0.5px;
   }
   .auth-logo-sub {
     font-size: 13px;
-    color: #94a3b8;
+    color: #7A7A7A;
     margin-top: 4px;
   }
   .auth-label {
     display: block;
     font-size: 13px;
-    font-weight: 500;
-    color: #94a3b8;
+    font-weight: 600;
+    color: #7A7A7A;
     margin-bottom: 6px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
   .auth-input {
     width: 100%;
-    background: #0f172a;
-    border: 1px solid #1f2937;
+    background: #F3EFE8;
+    border: 1px solid #B9B9B9;
     border-radius: 8px;
     padding: 11px 14px;
     font-size: 15px;
-    color: #e2e8f0;
+    color: #7A7A7A;
     outline: none;
     transition: border-color 0.2s;
     margin-bottom: 16px;
+    font-family: 'Cabin', sans-serif;
+    box-sizing: border-box;
   }
-  .auth-input:focus {
-    border-color: #4f46e5;
-  }
-  .auth-input::placeholder {
-    color: #475569;
-  }
+  .auth-input:focus { border-color: #106C54; }
+  .auth-input::placeholder { color: #B9B9B9; }
   .auth-btn-primary {
     width: 100%;
-    background: #4f46e5;
+    background: #106C54;
     color: #fff;
     border: none;
     border-radius: 8px;
@@ -77,47 +73,38 @@ const styles = `
     cursor: pointer;
     transition: background 0.2s, opacity 0.2s;
     margin-bottom: 10px;
+    font-family: 'Cabin', sans-serif;
   }
-  .auth-btn-primary:hover:not(:disabled) {
-    background: #4338ca;
-  }
-  .auth-btn-primary:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
+  .auth-btn-primary:hover:not(:disabled) { background: #659B90; }
+  .auth-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
   .auth-btn-secondary {
     width: 100%;
     background: transparent;
-    color: #94a3b8;
-    border: 1px solid #1f2937;
+    color: #106C54;
+    border: 1px solid #B9B9B9;
     border-radius: 8px;
     padding: 12px;
     font-size: 15px;
     font-weight: 500;
     cursor: pointer;
     transition: border-color 0.2s, color 0.2s;
+    font-family: 'Cabin', sans-serif;
   }
-  .auth-btn-secondary:hover:not(:disabled) {
-    border-color: #374151;
-    color: #e2e8f0;
-  }
-  .auth-btn-secondary:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
+  .auth-btn-secondary:hover:not(:disabled) { border-color: #106C54; color: #106C54; }
+  .auth-btn-secondary:disabled { opacity: 0.6; cursor: not-allowed; }
   .auth-error {
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    color: #f87171;
+    background: rgba(239,68,68,0.08);
+    border: 1px solid rgba(239,68,68,0.3);
+    color: #dc2626;
     border-radius: 8px;
     padding: 10px 14px;
     font-size: 13px;
     margin-bottom: 16px;
   }
   .auth-success {
-    background: rgba(16, 185, 129, 0.1);
-    border: 1px solid rgba(16, 185, 129, 0.3);
-    color: #34d399;
+    background: rgba(16,108,84,0.08);
+    border: 1px solid rgba(16,108,84,0.3);
+    color: #106C54;
     border-radius: 8px;
     padding: 10px 14px;
     font-size: 13px;
@@ -129,17 +116,8 @@ const styles = `
     gap: 12px;
     margin: 20px 0;
   }
-  .auth-divider-line {
-    flex: 1;
-    height: 1px;
-    background: #1f2937;
-  }
-  .auth-divider-text {
-    font-size: 12px;
-    color: #475569;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
+  .auth-divider-line { flex: 1; height: 1px; background: #B9B9B9; }
+  .auth-divider-text { font-size: 12px; color: #B9B9B9; text-transform: uppercase; letter-spacing: 0.5px; }
 `
 
 export default function AuthForm() {

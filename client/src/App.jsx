@@ -6,19 +6,20 @@ import ConversationList from './components/ConversationList'
 import ChatWindow from './components/ChatWindow'
 
 const globalStyles = `
+  @import url('https://fonts.googleapis.com/css2?family=Cabin:wght@400;500;600;700&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    background: #0f172a;
-    color: #e2e8f0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+    background: #F3EFE8;
+    color: #7A7A7A;
+    font-family: 'Cabin', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     height: 100vh;
     overflow: hidden;
   }
   #root { height: 100vh; }
   ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: #0b1220; }
-  ::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: #374151; }
+  ::-webkit-scrollbar-track { background: #F3EFE8; }
+  ::-webkit-scrollbar-thumb { background: #B9B9B9; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #999; }
 `
 
 export default function App() {
@@ -134,13 +135,13 @@ export default function App() {
           alignItems: 'center',
           justifyContent: 'center',
           height: '100vh',
-          background: '#0f172a',
-          color: '#94a3b8',
+          background: '#F3EFE8',
+          color: '#7A7A7A',
           gap: '12px',
         }}>
           <div style={{ fontSize: '32px' }}>✈️</div>
           <div style={{ fontSize: '15px' }}>Loading Travel Agent...</div>
-          <div style={{ fontSize: '12px', color: '#475569' }}>Connecting to server</div>
+          <div style={{ fontSize: '12px', color: '#B9B9B9' }}>Connecting to server</div>
         </div>
       </>
     )
@@ -190,12 +191,13 @@ export default function App() {
               alignItems: 'center',
               justifyContent: 'center',
               height: '100%',
-              color: '#94a3b8',
+              background: '#FFFCF6',
+              color: '#7A7A7A',
               gap: '12px',
             }}>
               <div style={{ fontSize: '48px' }}>✈️</div>
-              <div style={{ fontSize: '20px', fontWeight: 600, color: '#e2e8f0' }}>
-                Welcome to Travel Agent
+              <div style={{ fontSize: '20px', fontWeight: 600, color: '#106C54' }}>
+                Welcome to Juntos
               </div>
               <div style={{ fontSize: '14px' }}>
                 Select a conversation or start a new one

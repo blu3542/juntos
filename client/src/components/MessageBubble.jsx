@@ -1,73 +1,42 @@
 const styles = `
-  .mb-wrapper {
-    display: flex;
-    margin-bottom: 16px;
-  }
-  .mb-wrapper.user {
-    justify-content: flex-end;
-  }
-  .mb-wrapper.agent,
-  .mb-wrapper.other {
-    justify-content: flex-start;
-  }
-  .mb-bubble-group {
-    max-width: 70%;
-    display: flex;
-    flex-direction: column;
-  }
-  .mb-wrapper.user .mb-bubble-group {
-    align-items: flex-end;
-  }
-  .mb-wrapper.agent .mb-bubble-group,
-  .mb-wrapper.other .mb-bubble-group {
-    align-items: flex-start;
-  }
+  .mb-wrapper { display: flex; margin-bottom: 16px; }
+  .mb-wrapper.user { justify-content: flex-end; }
+  .mb-wrapper.agent, .mb-wrapper.other { justify-content: flex-start; }
+  .mb-bubble-group { max-width: 70%; display: flex; flex-direction: column; }
+  .mb-wrapper.user .mb-bubble-group { align-items: flex-end; }
+  .mb-wrapper.agent .mb-bubble-group, .mb-wrapper.other .mb-bubble-group { align-items: flex-start; }
   .mb-label {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 4px;
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;
+    font-family: 'Cabin', sans-serif;
   }
-  .mb-label.agent { color: #0e7490; }
-  .mb-label.other { color: #94a3b8; }
+  .mb-label.agent { color: #659B90; }
+  .mb-label.other { color: #B9B9B9; }
   .mb-bubble {
-    padding: 11px 15px;
-    border-radius: 16px;
-    font-size: 14px;
-    line-height: 1.55;
-    word-break: break-word;
+    padding: 11px 15px; border-radius: 16px;
+    font-size: 14px; line-height: 1.55; word-break: break-word;
+    font-family: 'Cabin', sans-serif;
   }
   .mb-bubble p { margin: 0 0 10px 0; }
   .mb-bubble p:last-child { margin-bottom: 0; }
-  .mb-bubble ul, .mb-bubble ol {
-    margin: 4px 0 10px 0;
-    padding-left: 16px;
-  }
+  .mb-bubble ul, .mb-bubble ol { margin: 4px 0 10px 0; padding-left: 16px; }
   .mb-bubble ul:last-child, .mb-bubble ol:last-child { margin-bottom: 0; }
   .mb-bubble li { margin-bottom: 6px; line-height: 1.5; }
   .mb-bubble li:last-child { margin-bottom: 0; }
+  .mb-bubble strong { font-weight: 700; }
   .mb-wrapper.user .mb-bubble {
-    white-space: pre-wrap;
-  }
-  .mb-wrapper.user .mb-bubble {
-    background: #4f46e5;
+    background: #106C54;
     color: #fff;
     border-bottom-right-radius: 4px;
+    white-space: pre-wrap;
   }
-  .mb-wrapper.agent .mb-bubble,
-  .mb-wrapper.other .mb-bubble {
-    background: #111827;
-    color: #e2e8f0;
-    border: 1px solid #1f2937;
+  .mb-wrapper.agent .mb-bubble, .mb-wrapper.other .mb-bubble {
+    background: #F3EFE8;
+    color: #7A7A7A;
+    border: 1px solid #B9B9B9;
     border-bottom-left-radius: 4px;
   }
-  .mb-timestamp {
-    font-size: 11px;
-    color: #475569;
-    margin-top: 4px;
-    padding: 0 2px;
-  }
+  .mb-timestamp { font-size: 11px; color: #B9B9B9; margin-top: 4px; padding: 0 2px; }
 `
 
 import ReactMarkdown from 'react-markdown'
