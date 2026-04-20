@@ -401,7 +401,7 @@ function PollBubble({ pollMessage, messages, conversationId, currentUserId, curr
           </div>
         )}
         <div style={{ background: '#F3EFE8', color: '#7A7A7A', border: '1px solid #B9B9B9', borderRadius: '16px', borderBottomLeftRadius: '4px', padding: '11px 15px', fontFamily: 'Cabin, sans-serif' }}>
-          <div style={{ fontWeight: 700, marginBottom: '8px' }}>{poll.question}</div>
+          <div style={{ fontSize: '14px', fontWeight: 20, marginBottom: '12px' }}>{poll.question}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {poll.options.map((opt, idx) => {
               const isMine = myVote?.option_index === idx
@@ -420,6 +420,7 @@ function PollBubble({ pollMessage, messages, conversationId, currentUserId, curr
                     background: isMine ? '#106C54' : '#fff',
                     color: isMine ? '#fff' : '#0f172a',
                     opacity: myVote && !isMine ? 0.75 : 1,
+                    fontFamily: 'Cabin, sans-serif'
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
@@ -430,7 +431,7 @@ function PollBubble({ pollMessage, messages, conversationId, currentUserId, curr
               )
             })}
           </div>
-          <div style={{ marginTop: '10px', fontSize: '12px', color: '#64748b' }}>
+            <div style={{ marginTop: '10px', fontSize: '12px', color: '#7A7A7A', fontFamily: 'Cabin, sans-serif' }}>
             {total} vote{total === 1 ? '' : 's'}
           </div>
         </div>
@@ -587,7 +588,62 @@ const styles = `
     -webkit-appearance: none; appearance: none; padding: 0;
   }
   .cw-attach-btn:hover:not(:disabled) { border-color: #106C54; background: rgba(16,108,84,0.06); }
-  .cw-attach-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .cw-action-menu-wrapper {
+    position: relative;
+    flex-shrink: 0;
+  }
+  .cw-action-menu {
+    position: absolute;
+    bottom: 54px;
+    left: 0;
+    background: #FFFCF6;
+    border: 1px solid #B9B9B9;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    overflow: hidden;
+    min-width: 160px;
+    z-index: 20;
+  }
+  .cw-action-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #7A7A7A;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    width: 100%;
+    text-align: left;
+    font-family: 'Cabin', sans-serif;
+    transition: background 0.15s, color 0.15s;
+  }
+  .cw-action-menu-item:hover {
+    background: rgba(16,108,84,0.07);
+    color: #106C54;
+  }
+  .cw-action-menu-item + .cw-action-menu-item {
+    border-top: 1px solid #B9B9B9;
+  }
+  .cw-plus-btn {
+    background: transparent;
+    border: 1px solid #B9B9B9;
+    border-radius: 10px;
+    width: 42px; height: 42px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-size: 22px;
+    line-height: 1;
+    color: #659B90;
+    transition: border-color 0.2s, background 0.2s, color 0.2s;
+    -webkit-appearance: none; appearance: none; padding: 0;
+    font-family: 'Cabin', sans-serif;
+  }
+  .cw-plus-btn:hover { border-color: #106C54; background: rgba(16,108,84,0.06); color: #106C54; }
+  .cw-plus-btn.active { border-color: #106C54; background: rgba(16,108,84,0.1); color: #106C54; }
   .cw-send-btn {
     background: #106C54;
     border: none;
@@ -962,6 +1018,7 @@ export default function ChatWindow({ user, conversationId, isGroup }) {
   const [pollError, setPollError] = useState('')
 
   const [todosOpen, setTodosOpen] = useState(false)
+  const [showActionMenu, setShowActionMenu] = useState(false)
 
   const bottomRef = useRef(null)
   const channelRef = useRef(null)
@@ -1338,23 +1395,50 @@ export default function ChatWindow({ user, conversationId, isGroup }) {
 
           <div className="cw-composer">
             <input ref={fileInputRef} type="file" multiple accept="image/*,application/pdf,.doc,.docx,.txt,.csv" style={{ display: 'none' }} onChange={handleFileChange} />
-            {!isGroup && (
-              <button className="cw-attach-btn" onClick={handleAttachClick} disabled={isThinking} aria-label="Attach file">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                </svg>
+
+            {/* + action menu — shown in both solo and group */}
+            <div className="cw-action-menu-wrapper">
+              <button
+                className={`cw-plus-btn${showActionMenu ? ' active' : ''}`}
+                onClick={() => setShowActionMenu((v) => !v)}
+                aria-label="Actions"
+              >
+                +
               </button>
-            )}
-            {isGroup && (
-              <button className="cw-attach-btn" onClick={openPoll} aria-label="Create poll" title="Create poll">
-                📊
-              </button>
-            )}
-            {isGroup && (
-              <button className="cw-attach-btn" onClick={() => setTodosOpen(true)} aria-label="Open to-dos" title="Shared to-dos">
-                ✅
-              </button>
-            )}
+              {showActionMenu && (
+                <>
+                  {/* Click-outside overlay */}
+                  <div
+                    style={{ position: 'fixed', inset: 0, zIndex: 19 }}
+                    onClick={() => setShowActionMenu(false)}
+                  />
+                  <div className="cw-action-menu">
+                    <button
+                      className="cw-action-menu-item"
+                      onClick={() => { handleAttachClick(); setShowActionMenu(false) }}
+                    >
+                      📎 Attach file
+                    </button>
+                    {isGroup && (
+                      <button
+                        className="cw-action-menu-item"
+                        onClick={() => { openPoll(); setShowActionMenu(false) }}
+                      >
+                        📊 Create poll
+                      </button>
+                    )}
+                    {isGroup && (
+                      <button
+                        className="cw-action-menu-item"
+                        onClick={() => { setTodosOpen(true); setShowActionMenu(false) }}
+                      >
+                        ✅ To-do list
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
             <textarea
               ref={textareaRef}
               className="cw-input"
