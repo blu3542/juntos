@@ -16,6 +16,72 @@ function corsResponse(body: string | null, status = 200) {
   });
 }
 
+function _stripTrailingSourcesBlock(text: string): string {
+  if (!text) return text;
+  const idx = text.lastIndexOf("\n\nSources:");
+  if (idx === -1) return text;
+  return text.slice(0, idx).trimEnd();
+}
+
+function _inlineSourceTags(text: string, citations: string | null): string {
+  if (!text || !citations) return text;
+
+  const lines = citations
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const tags: Array<{ source: string; location: string }> = [];
+  for (const line of lines) {
+    // Format: "- REDDIT: MauiVisitors (attraction)" or "- GOOGLE: Mala Ocean Tavern (restaurant) — 5★"
+    const m = line.match(/^[-*]?\s*([A-Z0-9_]+):\s*(.+?)\s*\(/);
+    if (!m) continue;
+    const source = m[1];
+    const location = m[2];
+    if (!location || location.length < 3) continue;
+    tags.push({ source, location });
+  }
+
+  const labelFor = (s: string) => {
+    switch (s) {
+      case "REDDIT":
+        return "reddit";
+      case "GOOGLE":
+        return "google reviews";
+      case "YELP":
+        return "yelp";
+      case "TRIPADVISOR":
+        return "tripadvisor";
+      default:
+        return s.toLowerCase();
+    }
+  };
+
+  let out = text;
+  for (const { source, location } of tags) {
+    const label = labelFor(source);
+    // Only tag the first occurrence, and don't double-tag.
+    if (!out.includes(location)) continue;
+    const escapedLoc = location.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+    const alreadyTagged = new RegExp(`${escapedLoc}\\s*\\((reddit|google reviews|yelp|tripadvisor)\\)`, "i");
+    if (alreadyTagged.test(out)) continue;
+
+    // If the location is immediately followed by an existing parenthetical like
+    // "Maui Beach Hotel (Kahului)", insert our tag before that parenthetical.
+    const followedByParen = new RegExp(`${escapedLoc}\\s*\\(`);
+    if (followedByParen.test(out)) {
+      const re = new RegExp(`${escapedLoc}\\s*\\(`);
+      out = out.replace(re, `${location} (${label}) (`);
+      continue;
+    }
+
+    const re = new RegExp(escapedLoc);
+    out = out.replace(re, `${location} (${label})`);
+  }
+
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Gemini types (minimal)
 // ---------------------------------------------------------------------------
@@ -78,6 +144,11 @@ const TOOL_DECLARATIONS = [
           type: "number",
           description: "Number of reviews to retrieve (default 8, max 15)",
         },
+        category: {
+          type: "string",
+          description:
+            "Optional category filter: one of 'restaurant', 'hotel', 'attraction', 'activity', 'beach'",
+        },
       },
       required: ["query", "city"],
     },
@@ -133,7 +204,7 @@ function createItinerary(args: {
 // RAG: search traveler reviews via pgvector
 // ---------------------------------------------------------------------------
 async function searchReviews(
-  args: { query: string; city: string; count?: number },
+  args: { query: string; city: string; count?: number; category?: string },
   openaiApiKey: string | undefined,
   supabaseUrl: string,
   supabaseServiceKey: string
@@ -143,7 +214,8 @@ async function searchReviews(
   }
 
   const city = args.city.toLowerCase().trim();
-  const count = Math.min(args.count ?? 8, 15);
+  const count = Math.min(args.count ?? 8, 20);
+  const categoryFilter = (args.category ?? "").toLowerCase().trim() || null;
 
   // Embed the query with OpenAI text-embedding-3-small
   const embedRes = await fetch("https://api.openai.com/v1/embeddings", {
@@ -167,6 +239,8 @@ async function searchReviews(
   const queryEmbedding = embedData.data[0].embedding;
 
   // Call match_reviews RPC via Supabase REST API
+  // Pull extra candidates and apply category filtering client-side.
+  const candidateCount = Math.min(Math.max(count * 3, 20), 60);
   const rpcRes = await fetch(`${supabaseUrl}/rest/v1/rpc/match_reviews`, {
     method: "POST",
     headers: {
@@ -177,7 +251,7 @@ async function searchReviews(
     body: JSON.stringify({
       query_embedding: queryEmbedding,
       city_filter: city,
-      match_count: count,
+      match_count: candidateCount,
     }),
   });
 
@@ -196,7 +270,20 @@ async function searchReviews(
   }>;
 
   // Filter out low-relevance results
-  const relevant = reviews.filter((r) => r.similarity >= 0.3);
+  const filtered = reviews
+    .filter((r) => r.similarity >= 0.2)
+    .filter((r) => !categoryFilter || (r.category ?? "").toLowerCase() === categoryFilter);
+
+  // Deduplicate by (source, location_name) so we don't cite the same place/subreddit repeatedly.
+  const seen = new Set<string>();
+  const relevant: typeof filtered = [];
+  for (const r of filtered) {
+    const key = `${(r.source ?? "").toLowerCase()}::${(r.location_name ?? "").toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    relevant.push(r);
+    if (relevant.length >= count) break;
+  }
 
   if (relevant.length === 0) {
     return {
@@ -209,11 +296,19 @@ async function searchReviews(
     .map((r) => `[${r.source.toUpperCase()}] ${r.location_name} — ${r.rating}★ (${r.category})\n${r.content}`)
     .join("\n\n");
 
+  const sources = Array.from(new Set(relevant.map((r) => r.source.toUpperCase()))).sort();
+  const citations = relevant
+    .slice(0, 5)
+    .map((r) => `- ${r.source.toUpperCase()}: ${r.location_name} (${r.category})${r.rating ? ` — ${r.rating}★` : ""}`)
+    .join("\n");
+
   return {
     city,
     query: args.query,
     review_count: relevant.length,
     reviews_text: `Relevant traveler reviews:\n\n${formatted}`,
+    sources,
+    citations,
   };
 }
 
@@ -422,6 +517,39 @@ ${ragInstruction}`
 ${profileBlock}
 ${ragInstruction}`;
 
+    // --- Eager RAG retrieval (so answers are grounded even if the model doesn't call tools) ---
+    // Currently the reviews DB is loaded primarily for Maui.
+    let systemInstructionWithRag = systemInstruction;
+    let ragSourcesLine: string | null = null;
+    let ragCitationsList: string | null = null;
+    try {
+      const cityForRag = "maui";
+      const wantsHotel = /(where\s+to\s+stay|hotel|resort|condo|airbnb|accommodation|lodging|vacation\s+rental|hostel)/i.test(cleanedMessage);
+      const ragResult = await searchReviews(
+        { query: cleanedMessage, city: cityForRag, count: 15, category: wantsHotel ? "hotel" : undefined },
+        OPENAI_API_KEY,
+        SUPABASE_URL,
+        SUPABASE_SERVICE_ROLE_KEY
+      ) as { reviews_text?: string; error?: string; sources?: string[]; citations?: string };
+
+      if (ragResult?.error) {
+        console.error("Eager RAG retrieval error:", ragResult.error);
+      }
+
+      if (ragResult?.reviews_text) {
+        systemInstructionWithRag = `${systemInstruction}\n\n${ragResult.reviews_text}`;
+      }
+
+      if (ragResult?.sources && ragResult.sources.length > 0) {
+        ragSourcesLine = `Sources: ${ragResult.sources.join(", ")}`;
+      }
+      if (ragResult?.citations) {
+        ragCitationsList = ragResult.citations;
+      }
+    } catch (e) {
+      console.error("Eager RAG retrieval failed:", e);
+    }
+
     // --- Map history to Gemini contents ---
     const historyList = messageHistory ?? [];
     const contents: GeminiContent[] = await Promise.all(
@@ -482,7 +610,7 @@ ${ragInstruction}`;
     let finalAssistantText = "";
 
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-      const geminiResponse = await callGemini(systemInstruction, contents, GEMINI_API_KEY);
+      const geminiResponse = await callGemini(systemInstructionWithRag, contents, GEMINI_API_KEY);
 
       const candidate = geminiResponse.candidates?.[0];
       if (!candidate) {
@@ -553,6 +681,14 @@ ${ragInstruction}`;
 
     // --- Save assistant message ---
     if (finalAssistantText) {
+      finalAssistantText = _stripTrailingSourcesBlock(finalAssistantText);
+      finalAssistantText = _inlineSourceTags(finalAssistantText, ragCitationsList);
+      if (ragSourcesLine || ragCitationsList) {
+        const parts: string[] = [];
+        if (ragSourcesLine) parts.push(ragSourcesLine);
+        if (ragCitationsList) parts.push(ragCitationsList);
+        finalAssistantText = `${finalAssistantText}\n\n${parts.join("\n")}`;
+      }
       const { error: insertAssistantError } = await serviceClient
         .from("messages")
         .insert({

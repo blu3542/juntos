@@ -15,6 +15,8 @@ TODO: implement with Selenium if needed:
   7. Return list of standard review dicts
 """
 
+from __future__ import annotations
+
 
 def scrape(city: str) -> list[dict]:
     raise NotImplementedError(

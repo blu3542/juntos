@@ -6,6 +6,8 @@ Usage:
     python ingest.py --city tokyo --source google
 """
 
+from __future__ import annotations
+
 import argparse
 import os
 import sys
@@ -13,11 +15,12 @@ from pathlib import Path
 
 # Load .env from repo root (one level up from rag/)
 from dotenv import load_dotenv
-load_dotenv(Path(__file__).parent.parent / ".env")
+_ENV_PATH = (Path(__file__).resolve().parent.parent / ".env").resolve()
+_DOTENV_LOADED = load_dotenv(_ENV_PATH)
 
 from supabase import create_client
 
-from scrapers import google_places, tripadvisor, yelp
+from scrapers import google_places, reddit, tripadvisor, yelp
 from pipeline.clean import clean_text
 from pipeline.embed import embed_texts
 from pipeline.store import store_reviews
@@ -25,6 +28,7 @@ from pipeline.store import store_reviews
 
 SCRAPERS = {
     "google": google_places,
+    "reddit": reddit,
     "tripadvisor": tripadvisor,
     "yelp": yelp,
 }
@@ -82,12 +86,17 @@ def run_source(source_name: str, city: str, supabase_client) -> tuple[int, int]:
     # Store in Supabase
     print(f"  Storing in Supabase...")
     try:
-        inserted, skipped = store_reviews(reviews_with_embeddings, supabase_client)
+        result = store_reviews(reviews_with_embeddings, supabase_client)
+        if isinstance(result, tuple) and len(result) == 3:
+            inserted, skipped, updated = result
+        else:
+            inserted, skipped = result  # type: ignore[misc]
+            updated = 0
     except Exception as e:
         print(f"  Error during storage: {e}")
         return 0, 0
 
-    print(f"  Stored {inserted} new reviews ({skipped} duplicates skipped)")
+    print(f"  Stored {inserted} new reviews ({skipped} duplicates skipped, {updated} updated)")
     return inserted, skipped
 
 
@@ -97,7 +106,7 @@ def main():
     parser.add_argument(
         "--source",
         default="google",
-        choices=["google", "tripadvisor", "yelp", "all"],
+        choices=["google", "reddit", "tripadvisor", "yelp", "all"],
         help="Data source to scrape (default: google)",
     )
     args = parser.parse_args()
@@ -106,10 +115,19 @@ def main():
     sources = list(SCRAPERS.keys()) if args.source == "all" else [args.source]
 
     # Validate env
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    supabase_url = (os.getenv("SUPABASE_URL") or "").strip()
+    supabase_key = (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
     if not supabase_url or not supabase_key:
+        missing = []
+        if not supabase_url:
+            missing.append("SUPABASE_URL")
+        if not supabase_key:
+            missing.append("SUPABASE_SERVICE_ROLE_KEY")
         print("Error: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in .env")
+        print(f"  .env path: {_ENV_PATH}")
+        print(f"  .env exists: {_ENV_PATH.exists()}")
+        print(f"  load_dotenv returned: {_DOTENV_LOADED}")
+        print(f"  missing: {', '.join(missing) if missing else 'unknown'}")
         sys.exit(1)
 
     supabase_client = create_client(supabase_url, supabase_key)

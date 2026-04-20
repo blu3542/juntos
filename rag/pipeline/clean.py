@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 import re
+from typing import Optional
+
 from bs4 import BeautifulSoup
 
 
-def clean_text(text: str) -> str | None:
+def clean_text(text: str) -> Optional[str]:
     """Strip HTML, normalize whitespace, return None if content is too short."""
     if not text:
         return None
