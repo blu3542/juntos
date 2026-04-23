@@ -1,0 +1,24 @@
+{
+  "name": "juntos-agent",
+  "version": "1.0.0",
+  "description": "Juntos travel agent Lambda — LangGraph + Gemini 2.5 Flash",
+  "type": "module",
+  "main": "handler.js",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.600.0",
+    "@langchain/core": "^1.1.41",
+    "@langchain/google-genai": "^2.1.28",
+    "@langchain/langgraph": "^1.2.9",
+    "@langchain/langgraph-checkpoint-postgres": "^1.0.1",
+    "dotenv": "^16.6.1",
+    "openai": "^4.50.0",
+    "pg": "^8.12.0",
+    "zod": "^3.25.32",
+    "zod-to-json-schema": "^3.24.5",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.1.0"
+  }
+}

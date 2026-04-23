@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { supabase } from './lib/supabase'
+import { getSession, onAuthStateChange } from './lib/auth'
+import { api } from './lib/api'
 import AuthForm from './components/AuthForm'
 import Onboarding from './components/Onboarding'
 import ConversationList from './components/ConversationList'
@@ -61,25 +62,9 @@ export default function App() {
         // Fallback for users who onboarded before the metadata flag was introduced.
         // One-time DB check.
         try {
-          const { data: profile, error: profileError } = await withTimeout(
-            supabase
-              .from('user_profiles')
-              .select('id')
-              .eq('id', newSession.user.id)
-              .maybeSingle(),
-            10000,
-            'Loading profile'
-          )
-          if (profileError) {
-            console.error('[resolveSession] profile check error:', profileError)
-            setAppState('onboarding')
-          } else if (profile) {
-            setAppState('chat')
-          } else {
-            setAppState('onboarding')
-          }
-        } catch (e) {
-          console.error('[resolveSession] profile check threw:', e)
+          await withTimeout(api.getProfile(), 10000, 'Loading profile')
+          setAppState('chat')
+        } catch {
           setAppState('onboarding')
         }
       }
@@ -95,7 +80,7 @@ export default function App() {
     // Safety net: never stay on loading screen beyond 3 seconds
     const timeout = setTimeout(() => setAppState('auth'), 10000)
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    getSession().then(({ data: { session } }) => {
       clearTimeout(timeout)
       resolveSession(session)
     }).catch(() => {
@@ -103,7 +88,7 @@ export default function App() {
       setAppState('auth')
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = onAuthStateChange(
       (_event, newSession) => resolveSession(newSession)
     )
 

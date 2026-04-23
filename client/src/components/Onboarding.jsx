@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { api } from '../lib/api'
 
 const QUESTIONS = [
   {
@@ -200,22 +200,14 @@ export default function Onboarding({ user, onComplete }) {
     setError('')
     setLoading(true)
     try {
-      const profile = { id: user.id }
+      const profile = { id: user.id, email: user.email }
       for (const q of QUESTIONS) {
         if (answers[q.key] !== undefined) profile[q.key] = answers[q.key]
       }
       profile[currentQuestion.key] = selectedOption
 
-      const { error: insertError } = await supabase
-        .from('user_profiles')
-        .upsert([profile])
-
-      if (insertError) {
-        setError(insertError.message)
-      } else {
-        await supabase.auth.updateUser({ data: { onboarding_complete: true } })
-        onComplete()
-      }
+      await api.putProfile(profile)
+      onComplete()
     } catch (e) {
       setError('An unexpected error occurred.')
     } finally {

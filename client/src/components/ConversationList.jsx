@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { api } from '../lib/api'
+import { signOut } from '../lib/auth'
 
 const styles = `
   .cl-sidebar {
@@ -260,7 +261,7 @@ function PendingInvitesBanner({ invites, onAccept, onDecline }) {
       </div>
       {expanded && invites.map((inv) => (
         <div key={inv.id} className="cl-invite-item">
-          <div className="cl-invite-group-name">{inv.conversations?.group_name ?? 'Group Chat'}</div>
+          <div className="cl-invite-group-name">{inv.group_name ?? 'Group Chat'}</div>
           <div className="cl-invite-by">Invited by {inv.inviter_display_name ?? 'a member'}</div>
           <div className="cl-invite-actions">
             <button
@@ -284,7 +285,7 @@ function PendingInvitesBanner({ invites, onAccept, onDecline }) {
   )
 }
 
-function CreateGroupModal({ user, onCreated, onClose }) {
+function CreateGroupModal({ onCreated, onClose }) {
   const [groupName, setGroupName] = useState('')
   const [creating, setCreating] = useState(false)
 
@@ -292,10 +293,13 @@ function CreateGroupModal({ user, onCreated, onClose }) {
     const name = groupName.trim()
     if (!name) return
     setCreating(true)
-    const { data: convId, error } = await supabase.rpc('create_group_conversation', { p_group_name: name })
-    setCreating(false)
-    if (!error && convId) {
-      onCreated(convId)
+    try {
+      const conv = await api.createGroupConversation(name)
+      onCreated(conv.id)
+    } catch (e) {
+      console.error('createGroupConversation error:', e)
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -335,122 +339,79 @@ export default function ConversationList({ user, activeConversationId, onSelect,
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [showCreateGroup, setShowCreateGroup] = useState(false)
-  const inviteChannelRef = useRef(null)
+  const inviteIntervalRef = useRef(null)
 
   useEffect(() => {
     fetchAll()
-    subscribeToInvites()
-    return () => {
-      if (inviteChannelRef.current) {
-        supabase.removeChannel(inviteChannelRef.current)
-      }
-    }
+    // Poll for new invites every 15s instead of Supabase Realtime
+    inviteIntervalRef.current = setInterval(fetchInvites, 15000)
+    return () => clearInterval(inviteIntervalRef.current)
   }, [user.id])
 
   const fetchAll = async () => {
     setLoading(true)
-    await Promise.all([fetchSolo(), fetchGroups(), fetchInvites()])
+    await Promise.all([fetchConversations(), fetchInvites()])
     setLoading(false)
   }
 
-  const fetchSolo = async () => {
-    const { data, error } = await supabase
-      .from('conversations')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('is_group', false)
-      .order('created_at', { ascending: false })
-    if (!error && data) setSoloConversations(data)
-  }
-
-  const fetchGroups = async () => {
-    const { data, error } = await supabase
-      .from('conversations')
-      .select('*, group_members!inner(user_id)')
-      .eq('group_members.user_id', user.id)
-      .eq('is_group', true)
-      .order('created_at', { ascending: false })
-    if (!error && data) setGroupConversations(data)
-  }
-
-  const fetchInvites = async () => {
-    const { data, error } = await supabase
-      .from('group_invites')
-      .select('*, conversations(group_name, id)')
-      .eq('invited_user_id', user.id)
-      .eq('status', 'pending')
-    if (!error && data) {
-      // Enrich with inviter display names
-      const enriched = await Promise.all(data.map(async (inv) => {
-        const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('display_name')
-          .eq('id', inv.invited_by)
-          .maybeSingle()
-        return {
-          ...inv,
-          inviter_display_name: profile?.display_name ?? null,
-        }
-      }))
-      setPendingInvites(enriched)
+  const fetchConversations = async () => {
+    try {
+      const { solo, groups } = await api.getConversations()
+      setSoloConversations(solo ?? [])
+      setGroupConversations(groups ?? [])
+    } catch (e) {
+      console.error('fetchConversations error:', e)
     }
   }
 
-  const subscribeToInvites = () => {
-    const channel = supabase
-      .channel(`invites-${user.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'group_invites',
-          filter: `invited_user_id=eq.${user.id}`,
-        },
-        () => fetchInvites()
-      )
-      .subscribe()
-    inviteChannelRef.current = channel
+  const fetchInvites = async () => {
+    try {
+      const invites = await api.getInvites()
+      setPendingInvites(invites ?? [])
+    } catch (e) {
+      console.error('fetchInvites error:', e)
+    }
   }
 
   const handleNewSolo = async () => {
     setCreating(true)
-    const { data, error } = await supabase
-      .from('conversations')
-      .insert([{ user_id: user.id, title: 'New Conversation' }])
-      .select()
-      .single()
-    if (!error && data) {
-      setSoloConversations((prev) => [data, ...prev])
-      onNew(data.id, false)
+    try {
+      const conv = await api.createConversation()
+      setSoloConversations((prev) => [conv, ...prev])
+      onNew(conv.id, false)
+    } catch (e) {
+      console.error('createConversation error:', e)
+    } finally {
+      setCreating(false)
     }
-    setCreating(false)
   }
 
   const handleGroupCreated = (convId) => {
     setShowCreateGroup(false)
-    fetchGroups()
+    fetchConversations()
     onNew(convId, true)
   }
 
   const handleAcceptInvite = async (inviteId) => {
-    const { error } = await supabase.rpc('accept_group_invite', { p_invite_id: inviteId })
-    if (!error) {
+    try {
+      await api.acceptInvite(inviteId)
       setPendingInvites((prev) => prev.filter((i) => i.id !== inviteId))
-      await fetchGroups()
+      await fetchConversations()
+    } catch (e) {
+      console.error('acceptInvite error:', e)
     }
   }
 
   const handleDeclineInvite = async (inviteId) => {
-    const { error } = await supabase.rpc('decline_group_invite', { p_invite_id: inviteId })
-    if (!error) {
+    try {
+      await api.declineInvite(inviteId)
       setPendingInvites((prev) => prev.filter((i) => i.id !== inviteId))
+    } catch (e) {
+      console.error('declineInvite error:', e)
     }
   }
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut()
-  }
+  const handleSignOut = () => signOut()
 
   return (
     <>

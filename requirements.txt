@@ -5,3 +5,7 @@ beautifulsoup4
 snscrape
 feedparser
 googlemaps
+# Aurora / AWS dependencies (Phase 1 migration)
+psycopg2-binary>=2.9
+pgvector>=0.2
+boto3>=1.34
