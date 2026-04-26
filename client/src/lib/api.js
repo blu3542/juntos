@@ -32,7 +32,7 @@ export const api = {
 
   // Conversations
   getConversations:        ()          => apiFetch('/conversations'),
-  createConversation:      ()          => apiFetch('/conversations', { method: 'POST' }),
+  createConversation:      (title)     => apiFetch('/conversations', { method: 'POST', body: title ? JSON.stringify({ title }) : undefined }),
   createGroupConversation: (groupName) => apiFetch('/conversations/group', { method: 'POST', body: JSON.stringify({ group_name: groupName }) }),
 
   // Messages

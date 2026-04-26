@@ -26,7 +26,7 @@ const globalStyles = `
 export default function App() {
   const [appState, setAppState] = useState('loading')
   const [session, setSession] = useState(null)
-  const [activeConversation, setActiveConversation] = useState(null) // { id, isGroup }
+  const [activeConversation, setActiveConversation] = useState(null) // { id, isGroup, initialPrompt? }
 
   const resolving = useRef(false)
 
@@ -106,8 +106,8 @@ export default function App() {
     setActiveConversation({ id, isGroup })
   }
 
-  const handleNewConversation = (id, isGroup = false) => {
-    setActiveConversation({ id, isGroup })
+  const handleNewConversation = (id, isGroup = false, initialPrompt = null) => {
+    setActiveConversation({ id, isGroup, initialPrompt })
   }
 
   if (appState === 'loading') {
@@ -168,6 +168,7 @@ export default function App() {
               session={session}
               conversationId={activeConversation.id}
               isGroup={activeConversation.isGroup ?? false}
+              initialPrompt={activeConversation.initialPrompt ?? null}
             />
           ) : (
             <div style={{

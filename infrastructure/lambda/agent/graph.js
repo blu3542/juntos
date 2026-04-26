@@ -165,7 +165,7 @@ export const AgentState = Annotation.Root({
     default: () => [],
   }),
   iteration_count: Annotation({
-    reducer: (x, y) => x + (y ?? 0),
+    reducer: (_, y) => y,
     default: () => 0,
   }),
 });
@@ -209,7 +209,7 @@ async function reason(state) {
 
   return {
     messages:        [response],
-    iteration_count: 1,
+    iteration_count: state.iteration_count + 1,
   };
 }
 

@@ -96,9 +96,13 @@ async function runGraph(conversationId, userMessage, userPreferences, destinatio
 
   const finalState = await graph.invoke(
     {
-      messages:         [new HumanMessage(userMessage)],
-      user_preferences: userPreferences,
+      messages:             [new HumanMessage(userMessage)],
+      user_preferences:     userPreferences,
       destination,
+      iteration_count:      0,
+      retrieved_reviews:    [],
+      search_queries_tried: [],
+      itinerary_draft:      null,
     },
     config
   );

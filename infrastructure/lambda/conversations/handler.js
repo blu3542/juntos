@@ -167,10 +167,12 @@ async function getConversations(event) {
 async function createConversation(event) {
   const userId = await getUserId(event);
   if (!userId) return respond(401, { error: "Unauthorized" });
-  const pool   = await getPool();
+  const body  = event.body ? JSON.parse(event.body) : {};
+  const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "New Conversation";
+  const pool  = await getPool();
   const result = await pool.query(
-    `INSERT INTO conversations (user_id, title) VALUES ($1, 'New Conversation') RETURNING *`,
-    [userId]
+    `INSERT INTO conversations (user_id, title) VALUES ($1, $2) RETURNING *`,
+    [userId, title]
   );
   return respond(201, result.rows[0]);
 }

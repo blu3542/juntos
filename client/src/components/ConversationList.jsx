@@ -223,6 +223,25 @@ const styles = `
   .cl-modal-btn-cancel:hover { border-color: #7A7A7A; }
   .cl-modal-btn-create { background: #106C54; color: #fff; }
   .cl-modal-btn-create:hover:not(:disabled) { background: #659B90; }
+  .cl-modal-textarea {
+    width: 100%;
+    background: #F3EFE8;
+    border: 1px solid #B9B9B9;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 14px;
+    color: #7A7A7A;
+    outline: none;
+    font-family: 'Cabin', sans-serif;
+    transition: border-color 0.15s;
+    margin-bottom: 16px;
+    box-sizing: border-box;
+    resize: vertical;
+    min-height: 80px;
+  }
+  .cl-modal-textarea:focus { border-color: #106C54; }
+  .cl-modal-textarea::placeholder { color: #B9B9B9; }
+  .cl-modal-label { font-size: 12px; color: #7A7A7A; margin-bottom: 6px; font-weight: 600; }
 `
 
 function formatDate(dateStr) {
@@ -332,6 +351,78 @@ function CreateGroupModal({ onCreated, onClose }) {
   )
 }
 
+function PlanNewTripModal({ onCreated, onClose }) {
+  const [destination, setDestination] = useState('')
+  const [days, setDays] = useState('')
+  const [ideas, setIdeas] = useState('')
+  const [creating, setCreating] = useState(false)
+
+  const handleCreate = async () => {
+    const dest = destination.trim()
+    if (!dest) return
+    setCreating(true)
+    try {
+      const conv = await api.createConversation(`Your trip to ${dest}`)
+      const daysPart = days.trim() ? `${days.trim()}-day ` : ''
+      let prompt = `I want to plan a ${daysPart}trip to ${dest}.`
+      if (ideas.trim()) prompt += ` Here are some initial ideas: ${ideas.trim()}`
+      onCreated(conv, prompt)
+    } catch (e) {
+      console.error('createConversation error:', e)
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  return (
+    <div className="cl-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="cl-modal">
+        <div className="cl-modal-title">Plan a New Trip</div>
+        <div className="cl-modal-label">Where are you going?</div>
+        <input
+          className="cl-modal-input"
+          type="text"
+          placeholder="Destination (e.g. Cincinnati, Tokyo)"
+          value={destination}
+          onChange={(e) => setDestination(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && destination.trim()) handleCreate() }}
+          autoFocus
+          disabled={creating}
+        />
+        <div className="cl-modal-label">How many days? (optional)</div>
+        <input
+          className="cl-modal-input"
+          type="number"
+          min="1"
+          max="30"
+          placeholder="e.g. 5"
+          value={days}
+          onChange={(e) => setDays(e.target.value)}
+          disabled={creating}
+        />
+        <div className="cl-modal-label">Initial ideas or preferences (optional)</div>
+        <textarea
+          className="cl-modal-textarea"
+          placeholder="e.g. interested in local food, outdoor hikes, budget-friendly"
+          value={ideas}
+          onChange={(e) => setIdeas(e.target.value)}
+          disabled={creating}
+        />
+        <div className="cl-modal-actions">
+          <button className="cl-modal-btn cl-modal-btn-cancel" onClick={onClose} disabled={creating}>Cancel</button>
+          <button
+            className="cl-modal-btn cl-modal-btn-create"
+            onClick={handleCreate}
+            disabled={!destination.trim() || creating}
+          >
+            {creating ? 'Creating...' : 'Start Planning'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ConversationList({ user, activeConversationId, onSelect, onNew }) {
   const [soloConversations, setSoloConversations] = useState([])
   const [groupConversations, setGroupConversations] = useState([])
@@ -339,6 +430,7 @@ export default function ConversationList({ user, activeConversationId, onSelect,
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [showCreateGroup, setShowCreateGroup] = useState(false)
+  const [showPlanTrip, setShowPlanTrip] = useState(false)
   const inviteIntervalRef = useRef(null)
 
   useEffect(() => {
@@ -392,6 +484,12 @@ export default function ConversationList({ user, activeConversationId, onSelect,
     onNew(convId, true)
   }
 
+  const handlePlanTripCreated = (conv, initialPrompt) => {
+    setShowPlanTrip(false)
+    setSoloConversations((prev) => [conv, ...prev])
+    onNew(conv.id, false, initialPrompt)
+  }
+
   const handleAcceptInvite = async (inviteId) => {
     try {
       await api.acceptInvite(inviteId)
@@ -423,14 +521,20 @@ export default function ConversationList({ user, activeConversationId, onSelect,
           onClose={() => setShowCreateGroup(false)}
         />
       )}
+      {showPlanTrip && (
+        <PlanNewTripModal
+          onCreated={handlePlanTripCreated}
+          onClose={() => setShowPlanTrip(false)}
+        />
+      )}
       <aside className="cl-sidebar">
         <div className="cl-header">
           <img src="/juntos-logo.png" alt="juntos" style={{ height: '32px', width: 'auto', marginBottom: '16px' }} />
           <button className="cl-new-btn" onClick={() => setShowCreateGroup(true)}>
             New Group Chat
           </button>
-          <button className="cl-new-btn-secondary" onClick={handleNewSolo} disabled={creating}>
-            {creating ? 'Creating...' : 'New Agent Chat'}
+          <button className="cl-new-btn-secondary" onClick={() => setShowPlanTrip(true)}>
+            Plan New Trip
           </button>
         </div>
 

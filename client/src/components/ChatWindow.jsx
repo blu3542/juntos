@@ -338,7 +338,7 @@ function MembersDrawer({ open, onClose, conversationId, user, members, userDispl
   )
 }
 
-export default function ChatWindow({ user, conversationId, isGroup }) {
+export default function ChatWindow({ user, conversationId, isGroup, initialPrompt = null }) {
   const [messages, setMessages] = useState([])
   const [inputText, setInputText] = useState('')
   const [isThinking, setIsThinking] = useState(false)
@@ -358,10 +358,13 @@ export default function ChatWindow({ user, conversationId, isGroup }) {
   const [todosOpen, setTodosOpen] = useState(false)
   const [showActionMenu, setShowActionMenu] = useState(false)
 
-  const bottomRef    = useRef(null)
-  const wsHandleRef  = useRef(null)
-  const textareaRef  = useRef(null)
-  const fileInputRef = useRef(null)
+  const [wsReady, setWsReady] = useState(false)
+
+  const bottomRef              = useRef(null)
+  const wsHandleRef            = useRef(null)
+  const textareaRef            = useRef(null)
+  const fileInputRef           = useRef(null)
+  const initialPromptSentRef   = useRef(false)
 
   // Reset and load messages when conversation changes
   useEffect(() => {
@@ -369,6 +372,8 @@ export default function ChatWindow({ user, conversationId, isGroup }) {
     setMessages([]); setIsThinking(false); setSendError(''); setUploadError('')
     setPendingFiles([]); setShowDrawer(false); setPollOpen(false)
     setPollQuestion(''); setPollOptionsText(''); setPollError(''); setTodosOpen(false)
+    setWsReady(false)
+    initialPromptSentRef.current = false
     setLoadingMessages(true)
     fetchMessages()
     if (isGroup) fetchGroupContext()
@@ -408,7 +413,7 @@ export default function ChatWindow({ user, conversationId, isGroup }) {
           setMessages((prev) => prev.some((m) => m.id === data.id) ? prev : [...prev, data])
           if (data.is_agent || data.role === 'assistant') setIsThinking(false)
         }
-      })
+      }, () => setWsReady(true))
     })
 
     return () => { wsHandleRef.current?.close(); wsHandleRef.current = null }
@@ -489,6 +494,14 @@ export default function ChatWindow({ user, conversationId, isGroup }) {
     }
     // No finally — isThinking cleared by agent_response / agent_error WebSocket message
   }
+
+  // Auto-send the initial prompt once the WS is open and the conversation is confirmed empty
+  useEffect(() => {
+    if (!initialPrompt || initialPromptSentRef.current) return
+    if (!wsReady || loadingMessages || messages.length > 0) return
+    initialPromptSentRef.current = true
+    handleSoloSend(initialPrompt)
+  }, [wsReady, loadingMessages, messages.length, initialPrompt])
 
   const handleGroupSend = async (text) => {
     const isAgentCommand = /^@travel-agent\b/i.test(text)
