@@ -20,8 +20,12 @@ HANDOFF.md
 **/node_modules/
 client/node_modules/
 
-# Terraform secrets
+# Terraform secrets and generated artifacts
 **/terraform.tfvars
+**/.terraform/
+**/terraform.tfstate
+**/terraform.tfstate.*
+infrastructure/terraform/*.zip
 
 # Local dev artifacts
 backend/dev.db

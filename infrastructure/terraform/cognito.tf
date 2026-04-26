@@ -41,6 +41,10 @@ resource "aws_cognito_user_pool_client" "web" {
 
   prevent_user_existence_errors = "ENABLED"
 
+  lifecycle {
+    ignore_changes = all
+  }
+
   token_validity_units {
     access_token  = "hours"
     id_token      = "hours"

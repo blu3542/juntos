@@ -22,6 +22,10 @@ resource "aws_db_parameter_group" "main" {
   tags = merge(local.tags, { Name = "${var.project_name}-pg-param-group" })
 }
 
+data "aws_secretsmanager_secret" "db" {
+  name = var.aws_secret_name
+}
+
 resource "aws_db_instance" "main" {
   identifier = "${var.project_name}-postgres"
 
@@ -31,7 +35,7 @@ resource "aws_db_instance" "main" {
 
   db_name  = var.db_name
   username = var.db_username
-  password = random_password.db.result
+  password = var.db_master_password
 
   allocated_storage = 20
   storage_type      = "gp2"
@@ -50,6 +54,10 @@ resource "aws_db_instance" "main" {
   enabled_cloudwatch_logs_exports = ["postgresql"]
 
   skip_final_snapshot = true
+
+  lifecycle {
+    ignore_changes = [password, engine_version]
+  }
 
   tags = merge(local.tags, { Name = "${var.project_name}-postgres" })
 }

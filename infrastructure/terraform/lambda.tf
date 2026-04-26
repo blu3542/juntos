@@ -60,6 +60,12 @@ resource "aws_iam_role_policy" "lambda_agent" {
         Resource = "*"
       },
       {
+        Sid      = "WebSocketPush"
+        Effect   = "Allow"
+        Action   = ["execute-api:ManageConnections"]
+        Resource = "arn:aws:execute-api:${var.aws_region}:${data.aws_caller_identity.current.account_id}:*/*/*"
+      },
+      {
         Sid    = "CloudWatchLogs"
         Effect = "Allow"
         Action = [
@@ -116,14 +122,16 @@ resource "aws_lambda_function" "agent" {
   filename         = data.archive_file.agent_lambda.output_path
   source_code_hash = data.archive_file.agent_lambda.output_base64sha256
   memory_size      = 512
-  timeout          = 30
+  timeout          = 900
 
   environment {
     variables = {
-      GEMINI_API_KEY        = var.gemini_api_key
-      OPENAI_API_KEY        = var.openai_api_key
-      AWS_SECRET_NAME       = var.aws_secret_name
-      COGNITO_USER_POOL_ID  = aws_cognito_user_pool.main.id
+      GEMINI_API_KEY         = var.gemini_api_key
+      OPENAI_API_KEY         = var.openai_api_key
+      AWS_SECRET_NAME        = var.aws_secret_name
+      COGNITO_USER_POOL_ID   = aws_cognito_user_pool.main.id
+      GOOGLE_PLACES_API_KEY  = var.google_places_api_key
+      WEBSOCKET_API_ENDPOINT = replace(aws_apigatewayv2_stage.websocket_prod.invoke_url, "wss://", "https://")
     }
   }
 
@@ -209,6 +217,12 @@ resource "aws_iam_role_policy" "lambda_websocket" {
         Resource = "arn:aws:execute-api:${var.aws_region}:${data.aws_caller_identity.current.account_id}:*/*/*"
       },
       {
+        Sid      = "InvokeAgentLambda"
+        Effect   = "Allow"
+        Action   = ["lambda:InvokeFunction"]
+        Resource = "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:${var.project_name}-agent"
+      },
+      {
         Sid    = "CloudWatchLogs"
         Effect = "Allow"
         Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
@@ -245,6 +259,7 @@ resource "aws_lambda_function" "websocket" {
       AWS_SECRET_NAME        = var.aws_secret_name
       WEBSOCKET_API_ENDPOINT = replace(aws_apigatewayv2_stage.websocket_prod.invoke_url, "wss://", "https://")
       COGNITO_USER_POOL_ID   = aws_cognito_user_pool.main.id
+      AGENT_LAMBDA_NAME      = "${var.project_name}-agent"
     }
   }
 

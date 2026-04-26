@@ -40,6 +40,13 @@ variable "db_username" {
   default     = "juntos_admin"
 }
 
+variable "db_master_password" {
+  description = "Master password for the RDS instance — ignored after initial creation (managed via Secrets Manager)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "db_instance_class" {
   description = "RDS instance class"
   type        = string
@@ -94,4 +101,11 @@ variable "rds_security_group_id" {
   description = "RDS security group ID — Lambda is allowed outbound 5432 to this SG"
   type        = string
   default     = "sg-02587cb6c17ebe958"
+}
+
+variable "google_places_api_key" {
+  description = "Google Places API key for on-demand review scraping"
+  type        = string
+  sensitive   = true
+  default     = ""
 }

@@ -474,6 +474,12 @@ resource "aws_apigatewayv2_route" "ws_message" {
   target    = "integrations/${aws_apigatewayv2_integration.websocket.id}"
 }
 
+resource "aws_apigatewayv2_route" "ws_agent" {
+  api_id    = aws_apigatewayv2_api.websocket.id
+  route_key = "agent"
+  target    = "integrations/${aws_apigatewayv2_integration.websocket.id}"
+}
+
 resource "aws_cloudwatch_log_group" "websocket_access_log" {
   name              = "/aws/apigateway/${var.project_name}-ws"
   retention_in_days = var.log_retention_days

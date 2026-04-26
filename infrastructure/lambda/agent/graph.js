@@ -88,7 +88,7 @@ function buildSystemPrompt(state) {
     ? `You are a knowledgeable and friendly AI travel agent participating in a group travel planning chat. You were invoked by ${state.user_preferences.__invoker ?? "a group member"} using @travel-agent. Your goal is to plan a trip that works for everyone — flag any conflicts (dietary, budget) proactively.\n\n${state.user_preferences.__block}`
     : `You are a knowledgeable and friendly AI travel agent. Help users plan their trips with personalized recommendations.\n\n${state.user_preferences?.__block ?? ""}`;
 
-  const rag = `\nYou have access to a real traveler reviews database loaded with reviews for ${state.destination}. Always call search_reviews to ground recommendations in real traveler experiences. Use create_itinerary to build a structured day-by-day plan when the user is ready to finalize.`;
+  const rag = `\nYou have access to a real traveler reviews database. Always call search_reviews to ground recommendations. If search_reviews returns 0 results for a city, call scrape_city_reviews to populate the database before searching again. Use create_itinerary to build a day-by-day plan when the user is ready.`;
 
   const reviewsSection = state.retrieved_reviews?.length
     ? `\n\nRELEVANT REVIEWS:\n${formatReviews(state.retrieved_reviews)}`
@@ -122,6 +122,17 @@ const createItineraryTool = tool(
       destination: z.string().describe("The destination city or region"),
       days:        z.number().describe("Number of days for the itinerary"),
       preferences: z.string().optional().describe("Travel style or special requests"),
+    }),
+  }
+);
+
+const scrapeCityReviewsTool = tool(
+  async () => ({}), // execution handled by scrapeCityReviews node
+  {
+    name: "scrape_city_reviews",
+    description: "Scrape and ingest real traveler reviews from Google Places for a city not yet in the database. Use when search_reviews returns 0 results. Returns number of reviews ingested.",
+    schema: z.object({
+      city: z.string().describe("The city to scrape, lowercase (e.g. 'tokyo', 'barcelona')"),
     }),
   }
 );
@@ -179,7 +190,7 @@ async function reason(state) {
   const model = new ChatGoogleGenerativeAI({
     model:  GEMINI_MODEL,
     apiKey: process.env.GEMINI_API_KEY,
-  }).bindTools([searchReviewsTool, createItineraryTool]);
+  }).bindTools([searchReviewsTool, createItineraryTool, scrapeCityReviewsTool]);
 
   const systemPrompt = buildSystemPrompt(state);
   const response = await model.invoke([
@@ -233,6 +244,31 @@ async function searchReviews(state) {
     messages:             [new ToolMessage({ content: resultText, tool_call_id: tc?.id ?? "search" })],
     retrieved_reviews:    merged,
     search_queries_tried: [query],
+  };
+}
+
+// ── Node: scrape_city_reviews ─────────────────────────────────────────────────
+
+async function scrapeCityReviews(state) {
+  const lastAI = [...state.messages].reverse().find(m => m._getType?.() === "ai");
+  const tc     = lastAI?.tool_calls?.[0];
+  const city   = (tc?.args?.city ?? state.destination).toLowerCase();
+  log({ node: "scrape_city_reviews", city, iteration_count: state.iteration_count });
+  let resultText;
+  try {
+    if (!process.env.GOOGLE_PLACES_API_KEY) {
+      resultText = `Google Places API key not configured. Cannot scrape reviews for ${city}.`;
+    } else {
+      const { scrapeCityReviews: runScraper } = await import("./scraper.js");
+      const result = await runScraper(city, { embedText, getPool, log });
+      resultText = `Scraped and ingested ${result.inserted} new reviews for ${city} (${result.updated} updated). You can now call search_reviews for ${city}.`;
+    }
+  } catch (err) {
+    log({ node: "scrape_city_reviews", error: err.message, city });
+    resultText = `Failed to scrape reviews for ${city}: ${err.message}.`;
+  }
+  return {
+    messages: [new ToolMessage({ content: resultText, tool_call_id: tc?.id ?? "scrape" })],
   };
 }
 
@@ -342,9 +378,10 @@ function shouldContinue(state) {
   const lastAI = [...state.messages].reverse().find(m => m._getType?.() === "ai");
   const toolName = lastAI?.tool_calls?.[0]?.name;
 
-  const decision = toolName === "search_reviews"   ? "search_reviews"
-                 : toolName === "create_itinerary" ? "generate_itinerary"
-                 :                                   "synthesize";
+  const decision = toolName === "search_reviews"      ? "search_reviews"
+                 : toolName === "create_itinerary"    ? "generate_itinerary"
+                 : toolName === "scrape_city_reviews" ? "scrape_city_reviews"
+                 :                                      "synthesize";
 
   log({ node: "should_continue", decision, toolName: toolName ?? "none", iteration_count: state.iteration_count });
   return decision;
@@ -352,23 +389,31 @@ function shouldContinue(state) {
 
 // ── Graph factory ─────────────────────────────────────────────────────────────
 
-export function createGraph(checkpointer) {
+export function createGraph(checkpointer, onStatus = () => {}) {
   const graph = new StateGraph(AgentState)
-    .addNode("retrieve_context",   retrieveContext)
-    .addNode("reason",             reason)
-    .addNode("search_reviews",     searchReviews)
-    .addNode("generate_itinerary", generateItinerary)
-    .addNode("synthesize",         synthesize)
+    .addNode("retrieve_context",    retrieveContext)
+    .addNode("reason",              reason)
+    .addNode("search_reviews",      (s) => { onStatus("Searching reviews..."); return searchReviews(s); })
+    .addNode("scrape_city_reviews", (s) => {
+      const tc   = [...s.messages].reverse().find(m => m._getType?.() === "ai")?.tool_calls?.[0];
+      const city = (tc?.args?.city ?? s.destination).toLowerCase();
+      onStatus(`Scraping reviews for ${city}...`);
+      return scrapeCityReviews(s);
+    })
+    .addNode("generate_itinerary",  (s) => { onStatus("Building your itinerary..."); return generateItinerary(s); })
+    .addNode("synthesize",          (s) => { onStatus("Writing response..."); return synthesize(s); })
     .addEdge(START,                "retrieve_context")
     .addEdge("retrieve_context",   "reason")
     .addConditionalEdges("reason", shouldContinue, {
-      search_reviews:     "search_reviews",
-      generate_itinerary: "generate_itinerary",
-      synthesize:         "synthesize",
+      search_reviews:      "search_reviews",
+      generate_itinerary:  "generate_itinerary",
+      scrape_city_reviews: "scrape_city_reviews",
+      synthesize:          "synthesize",
     })
-    .addEdge("search_reviews",     "reason")
-    .addEdge("generate_itinerary", "synthesize")
-    .addEdge("synthesize",         END);
+    .addEdge("search_reviews",      "reason")
+    .addEdge("scrape_city_reviews", "reason")
+    .addEdge("generate_itinerary",  "synthesize")
+    .addEdge("synthesize",          END);
 
   return graph.compile({ checkpointer });
 }

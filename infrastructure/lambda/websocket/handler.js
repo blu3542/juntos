@@ -1,5 +1,6 @@
 import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
 import { ApiGatewayManagementApiClient, PostToConnectionCommand } from "@aws-sdk/client-apigatewaymanagementapi";
+import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 import jwt from "jsonwebtoken";
 import jwksClient from "jwks-rsa";
 import pg from "pg";
@@ -147,6 +148,50 @@ async function handleMessage(event) {
   return { statusCode: 200, body: "Message sent" };
 }
 
+async function handleAgentMessage(event) {
+  const connectionId = event.requestContext.connectionId;
+  let body;
+  try {
+    body = JSON.parse(event.body ?? "{}");
+  } catch {
+    return { statusCode: 400, body: "Invalid JSON" };
+  }
+
+  const { conversation_id, user_message, is_group, sender_display_name, attachments } = body;
+  if (!conversation_id || !user_message) {
+    return { statusCode: 400, body: "conversation_id and user_message required" };
+  }
+
+  // Retrieve userId stored when client connected ($connect handler)
+  const pool = await getPool();
+  const { rows } = await pool.query(
+    "SELECT user_id FROM websocket_connections WHERE connection_id=$1",
+    [connectionId]
+  );
+  const userId = rows[0]?.user_id;
+  if (!userId) return { statusCode: 401, body: "Not authenticated" };
+
+  // Async invoke — InvocationType:Event returns immediately; Agent Lambda runs independently
+  const lambda = new LambdaClient({ region: process.env.AWS_REGION ?? "us-east-1" });
+  await lambda.send(new InvokeCommand({
+    FunctionName:   process.env.AGENT_LAMBDA_NAME,
+    InvocationType: "Event",
+    Payload: Buffer.from(JSON.stringify({
+      connectionId,
+      userId,
+      conversation_id,
+      user_message,
+      is_group:             is_group ?? false,
+      sender_display_name:  sender_display_name ?? null,
+      attachments:          attachments ?? null,
+      wsEndpoint:           process.env.WEBSOCKET_API_ENDPOINT,
+    })),
+  }));
+
+  log({ route: "agent", connectionId, conversation_id, userId });
+  return { statusCode: 200, body: "Agent invoked" };
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 export async function handler(event) {
@@ -155,6 +200,7 @@ export async function handler(event) {
     if (route === "$connect")    return await handleConnect(event);
     if (route === "$disconnect") return await handleDisconnect(event);
     if (route === "message")     return await handleMessage(event);
+    if (route === "agent")       return await handleAgentMessage(event);
     return { statusCode: 400, body: `Unknown route: ${route}` };
   } catch (err) {
     console.error(JSON.stringify({ ts: new Date().toISOString(), route, error: err.message, stack: err.stack }));

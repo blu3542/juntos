@@ -342,6 +342,7 @@ export default function ChatWindow({ user, conversationId, isGroup }) {
   const [messages, setMessages] = useState([])
   const [inputText, setInputText] = useState('')
   const [isThinking, setIsThinking] = useState(false)
+  const [thinkingStatus, setThinkingStatus] = useState('Thinking...')
   const [sendError, setSendError] = useState('')
   const [loadingMessages, setLoadingMessages] = useState(true)
   const [pendingFiles, setPendingFiles] = useState([])
@@ -373,9 +374,9 @@ export default function ChatWindow({ user, conversationId, isGroup }) {
     if (isGroup) fetchGroupContext()
   }, [conversationId, isGroup])
 
-  // WebSocket subscription for group chats
+  // WebSocket subscription — open for ALL conversations (solo uses it for agent, group for broadcast)
   useEffect(() => {
-    if (!conversationId || !isGroup) return
+    if (!conversationId) return
 
     wsHandleRef.current?.close()
     wsHandleRef.current = null
@@ -383,6 +384,26 @@ export default function ChatWindow({ user, conversationId, isGroup }) {
     getSession().then(({ data: { session } }) => {
       if (!session?.access_token) return
       wsHandleRef.current = openConversationSocket(conversationId, session.access_token, (data) => {
+        // Agent status update — update thinking indicator label
+        if (data?.type === 'agent_status') {
+          setThinkingStatus(data.status)
+          return
+        }
+        // Agent final response — append message and clear thinking state
+        if (data?.type === 'agent_response') {
+          setMessages((prev) => [...prev, data.message])
+          setIsThinking(false)
+          setThinkingStatus('Thinking...')
+          return
+        }
+        // Agent error — surface to user
+        if (data?.type === 'agent_error') {
+          setSendError(data.message)
+          setIsThinking(false)
+          setThinkingStatus('Thinking...')
+          return
+        }
+        // Group broadcast — append if not already present
         if (data?.id) {
           setMessages((prev) => prev.some((m) => m.id === data.id) ? prev : [...prev, data])
           if (data.is_agent || data.role === 'assistant') setIsThinking(false)
@@ -391,7 +412,7 @@ export default function ChatWindow({ user, conversationId, isGroup }) {
     })
 
     return () => { wsHandleRef.current?.close(); wsHandleRef.current = null }
-  }, [conversationId, isGroup])
+  }, [conversationId])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, isThinking])
 
@@ -445,19 +466,28 @@ export default function ChatWindow({ user, conversationId, isGroup }) {
 
   const handleSoloSend = async (text) => {
     setIsThinking(true)
+    setThinkingStatus('Thinking...')
     try {
       let attachments = []
       if (pendingFiles.length > 0) {
         attachments = await uploadFilesToStorage()
         setPendingFiles([])
       }
-      await api.invokeAgent({ conversation_id: conversationId, user_message: text, attachments })
-      await fetchMessages()
+      // Persist user message and show it optimistically
+      await api.createMessage({ conversation_id: conversationId, role: 'user', content: text, is_agent: false, attachments })
+      setMessages((prev) => [...prev, {
+        id: Date.now().toString(), role: 'user', content: text,
+        attachments: attachments.length ? attachments : undefined,
+        created_at: new Date().toISOString(),
+      }])
+      // Fire agent over WebSocket — response arrives via agent_response message
+      wsHandleRef.current?.send({ action: 'agent', conversation_id: conversationId, user_message: text, attachments })
     } catch (err) {
       setSendError(err.message || 'Failed to send message.')
-    } finally {
       setIsThinking(false)
+      setThinkingStatus('Thinking...')
     }
+    // No finally — isThinking cleared by agent_response / agent_error WebSocket message
   }
 
   const handleGroupSend = async (text) => {
@@ -478,11 +508,13 @@ export default function ChatWindow({ user, conversationId, isGroup }) {
 
     if (isAgentCommand) {
       setIsThinking(true)
-      try {
-        await api.invokeAgent({ conversation_id: conversationId, user_message: text, is_group: true, sender_display_name: displayName, attachments })
-        await fetchMessages()
-      } catch (err) { setSendError(err.message || 'Failed to invoke agent.') }
-      finally { setIsThinking(false) }
+      setThinkingStatus('Thinking...')
+      // Fire agent over WebSocket — response arrives via agent_response message
+      wsHandleRef.current?.send({
+        action: 'agent', conversation_id: conversationId,
+        user_message: text, is_group: true,
+        sender_display_name: displayName, attachments,
+      })
     }
   }
 
@@ -555,7 +587,7 @@ export default function ChatWindow({ user, conversationId, isGroup }) {
                     <MessageBubble key={msg.id} message={msg} isGroup={isGroup} currentUserId={user.id} />
                   )
                 ))}
-                {isThinking && (<div><div className="cw-thinking-label">Travel Agent</div><div className="cw-thinking"><div className="cw-dots"><div className="cw-dot" /><div className="cw-dot" /><div className="cw-dot" /></div><span style={{ fontSize: '13px', color: '#94a3b8' }}>Thinking...</span></div></div>)}
+                {isThinking && (<div><div className="cw-thinking-label">Travel Agent</div><div className="cw-thinking"><div className="cw-dots"><div className="cw-dot" /><div className="cw-dot" /><div className="cw-dot" /></div><span style={{ fontSize: '13px', color: '#94a3b8' }}>{thinkingStatus}</span></div></div>)}
               </>
             )}
             <div ref={bottomRef} />

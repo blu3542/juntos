@@ -15,7 +15,7 @@ output "db_name" {
 
 output "db_secret_arn" {
   description = "ARN of the Secrets Manager secret holding RDS credentials"
-  value       = aws_secretsmanager_secret.db.arn
+  value       = data.aws_secretsmanager_secret.db.arn
 }
 
 output "vpc_id" {
