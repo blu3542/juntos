@@ -170,20 +170,6 @@ export const AgentState = Annotation.Root({
   }),
 });
 
-// ── Node: retrieve_context ────────────────────────────────────────────────────
-
-async function retrieveContext(state) {
-  const lastHuman = [...state.messages].reverse().find(m => m._getType?.() === "human");
-  const query = typeof lastHuman?.content === "string" ? lastHuman.content : "";
-
-  const embedding = await embedText(query);
-  const reviews   = await matchReviews(embedding, state.destination, 15, undefined);
-
-  log({ node: "retrieve_context", destination: state.destination, reviewCount: reviews.length, iteration_count: state.iteration_count });
-
-  return { retrieved_reviews: reviews };
-}
-
 // ── Node: reason ──────────────────────────────────────────────────────────────
 
 async function reason(state) {
@@ -391,7 +377,6 @@ function shouldContinue(state) {
 
 export function createGraph(checkpointer, onStatus = () => {}) {
   const graph = new StateGraph(AgentState)
-    .addNode("retrieve_context",    retrieveContext)
     .addNode("reason",              reason)
     .addNode("search_reviews",      (s) => { onStatus("Searching reviews..."); return searchReviews(s); })
     .addNode("scrape_city_reviews", (s) => {
@@ -402,8 +387,7 @@ export function createGraph(checkpointer, onStatus = () => {}) {
     })
     .addNode("generate_itinerary",  (s) => { onStatus("Building your itinerary..."); return generateItinerary(s); })
     .addNode("synthesize",          (s) => { onStatus("Writing response..."); return synthesize(s); })
-    .addEdge(START,                "retrieve_context")
-    .addEdge("retrieve_context",   "reason")
+    .addEdge(START,                "reason")
     .addConditionalEdges("reason", shouldContinue, {
       search_reviews:      "search_reviews",
       generate_itinerary:  "generate_itinerary",
